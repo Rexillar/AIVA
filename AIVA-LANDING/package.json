@@ -1,0 +1,13 @@
+{
+  "name": "aiva-landing",
+  "version": "1.0.0",
+  "description": "AIVA Landing Page",
+  "main": "index.html",
+  "scripts": {
+    "format": "prettier --write .",
+    "lint": "echo 'No linting configured for landing page'"
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2"
+  }
+}
