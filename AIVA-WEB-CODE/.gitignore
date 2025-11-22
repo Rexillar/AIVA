@@ -36,3 +36,6 @@ node-v20.18.0-win-x64/
 .env.local
 .env.production
 .env.staging
+
+# Google Cloud credentials
+**/config/gcs-key.json
