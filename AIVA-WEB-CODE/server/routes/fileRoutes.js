@@ -1,0 +1,85 @@
+/*=================================================================
+* Project: AIVA-WEB
+* File: fileRoutes.js
+* Author: Mohitraj Jadeja
+* Date Created: October 21, 2025
+* Last Modified: October 21, 2025
+*=================================================================
+* Description:
+* File management routes with workspace security
+*=================================================================
+* Copyright (c) 2024 Mohitraj Jadeja. All rights reserved.
+*=================================================================*/
+
+import express from 'express';
+import multer from 'multer';
+import { protect } from '../middlewares/authMiddleware.js';
+import { 
+  validateWorkspaceAccess,
+  validateFileAccess
+} from '../middlewares/workspaceSecurityMiddleware.js';
+import {
+  uploadFile,
+  getWorkspaceFiles,
+  downloadFile,
+  deleteFile,
+  restoreFile,
+  getFileDetails,
+  updateFileMetadata,
+  getTrashFiles
+} from '../controllers/fileController.js';
+
+const router = express.Router();
+
+// Configure multer for file uploads (memory storage for GCS)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Add file type restrictions if needed
+    const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx|txt|mp4|mp3|webm|zip/;
+    const extname = allowedTypes.test(file.originalname.toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+
+    if (extname && mimetype) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Allowed types: images, PDFs, documents, videos, audio, zip'));
+    }
+  }
+});
+
+// Apply authentication to all routes
+router.use(protect);
+
+// Upload file (workspace security middleware validates workspace access)
+router.post('/upload', 
+  validateWorkspaceAccess,
+  upload.single('file'), 
+  uploadFile
+);
+
+// Get workspace files
+router.get('/workspace/:workspaceId', 
+  validateWorkspaceAccess,
+  getWorkspaceFiles
+);
+
+// Get trash files
+router.get('/trash/:workspaceId',
+  validateWorkspaceAccess,
+  getTrashFiles
+);
+
+// File-specific operations (file access middleware validates both file and workspace)
+router.route('/:id')
+  .get(validateFileAccess, getFileDetails)
+  .put(validateFileAccess, updateFileMetadata)
+  .delete(validateFileAccess, deleteFile);
+
+router.get('/:id/download', validateFileAccess, downloadFile);
+router.post('/:id/restore', validateFileAccess, restoreFile);
+
+export default router;

@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+. "$(dirname -- \"$0\")/_/husky.sh"
+
+# Run client and server lint before committing
+npm --prefix client run lint || true
+npm --prefix server run lint || true

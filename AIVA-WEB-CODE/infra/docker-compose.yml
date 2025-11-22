@@ -1,0 +1,39 @@
+services:
+  aiva_backend:
+    build:
+      context: ./server
+      dockerfile: ../backend.Dockerfile
+    container_name: aiva_backend
+    restart: always
+    env_file:
+      - ./server/.env
+      - ./client/.env
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongo
+
+  aiva_frontend:
+    build:
+      context: ./client
+      dockerfile: ../frontend.Dockerfile
+    container_name: aiva_frontend
+    restart: always
+    ports:
+      - "3001:80"
+    depends_on:
+      - aiva_backend
+
+  mongo:
+    image: mongo:5.0
+    container_name: aiva_mongo
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=aiva
+
+volumes:
+  mongo_data:
