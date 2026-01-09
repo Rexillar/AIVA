@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import React from 'react';
+/* eslint-disable react-hooks/exhaustive-deps */
 import * as fabric from 'fabric';
 import {
   FaMousePointer,
@@ -797,9 +798,10 @@ const Canvas = () => {
     } catch (error) {
       console.warn('Error saving to history:', error);
     }
-  }, [history, historyIndex, activeCanvasId]);
+  }, [history, historyIndex, activeCanvasId, debouncedSave]);
+
 // Auto-save interval - save every 30 seconds
-useEffect(() => {
+  useEffect(() => {
   if (activeCanvasId && fabricCanvas.current) {
     // Clear any existing auto-save interval before starting a new one
     if (autoSaveIntervalRef.current) {
@@ -888,61 +890,8 @@ useEffect(() => {
     fabricCanvas.current.add(text);
     fabricCanvas.current.setActiveObject(text);
     saveToHistory();
-  }, [selectedColor, saveToHistory, isDarkMode]);
-
-  const addStickyNote = useCallback(() => {
-    if (!fabricCanvas.current) return;
-    const sticky = new fabric.Rect({
-      left: 100,
-      top: 100,
-      width: 200,
-      height: 120,
-      fill: isDarkMode ? '#3a3a2a' : '#FFF9C4',
-      stroke: isDarkMode ? '#555544' : '#F9A825',
-      strokeWidth: 2,
-      rx: 8,
-      ry: 8,
-      shadow: {
-        color: 'rgba(0, 0, 0, 0.3)',
-        blur: 10,
-        offsetX: 0,
-        offsetY: 3,
-      },
-    });
-    const text = new fabric.IText('Note: Click to edit', {
-      left: 110,
-      top: 115,
-      fontSize: 14,
-      fill: isDarkMode ? '#e0e0c0' : '#424242',
-      fontFamily: 'Inter, system-ui, sans-serif',
-      width: 180,
-    });
-    const group = new fabric.Group([sticky, text], {
-      left: 100,
-      top: 100,
-      metadata: {
-        type: 'sticky_note',
-        nodeId: `note_${Date.now()}`,
-      },
-    });
-    animateShapeCreation(group);
-    saveToHistory();
   }, [saveToHistory, isDarkMode]);
 
-  const deleteSelected = useCallback(() => {
-    if (!fabricCanvas.current) return;
-    const activeObjects = fabricCanvas.current.getActiveObjects();
-    if (activeObjects && activeObjects.length > 0) {
-      activeObjects.forEach(obj => {
-        fabricCanvas.current.remove(obj);
-      });
-      fabricCanvas.current.discardActiveObject();
-      setSelectedObjects([]);
-      saveToHistory();
-    }
-  }, [saveToHistory]);
-
-  // Keyboard shortcuts
   // Helper function for smooth shape creation animation
   const animateShapeCreation = useCallback((shape) => {
     if (!fabricCanvas.current || !shape) {
@@ -981,6 +930,60 @@ useEffect(() => {
       console.warn('Error setting active object:', error);
     }
   }, []);
+
+  const addStickyNote = useCallback(() => {
+    if (!fabricCanvas.current) return;
+    const sticky = new fabric.Rect({
+      left: 100,
+      top: 100,
+      width: 200,
+      height: 120,
+      fill: isDarkMode ? '#3a3a2a' : '#FFF9C4',
+      stroke: isDarkMode ? '#555544' : '#F9A825',
+      strokeWidth: 2,
+      rx: 8,
+      ry: 8,
+      shadow: {
+        color: 'rgba(0, 0, 0, 0.3)',
+        blur: 10,
+        offsetX: 0,
+        offsetY: 3,
+      },
+    });
+    const text = new fabric.IText('Note: Click to edit', {
+      left: 110,
+      top: 115,
+      fontSize: 14,
+      fill: isDarkMode ? '#e0e0c0' : '#424242',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      width: 180,
+    });
+    const group = new fabric.Group([sticky, text], {
+      left: 100,
+      top: 100,
+      metadata: {
+        type: 'sticky_note',
+        nodeId: `note_${Date.now()}`,
+      },
+    });
+    animateShapeCreation(group);
+    saveToHistory();
+  }, [saveToHistory, isDarkMode, animateShapeCreation]);
+
+  const deleteSelected = useCallback(() => {
+    if (!fabricCanvas.current) return;
+    const activeObjects = fabricCanvas.current.getActiveObjects();
+    if (activeObjects && activeObjects.length > 0) {
+      activeObjects.forEach(obj => {
+        fabricCanvas.current.remove(obj);
+      });
+      fabricCanvas.current.discardActiveObject();
+      setSelectedObjects([]);
+      saveToHistory();
+    }
+  }, [saveToHistory]);
+
+  // Keyboard shortcuts
 
   const addRectangleAt = useCallback((x, y) => {
     if (!fabricCanvas.current) {
@@ -2569,29 +2572,6 @@ useEffect(() => {
     saveToHistory();
   }, [showGrid, drawGrid, addRectangleAt, addCircleAt, addDiamondAt, addEllipseAt, saveToHistory]);
 
-  // Persistent connection functions
-  const createPersistentConnection = useCallback((fromShape, toShape, mode = 'directional') => {
-    const connectionId = `conn_${Date.now()}_${Math.random()}`;
-    
-    // Store connection data
-    const connectionData = {
-      id: connectionId,
-      fromId: fromShape.metadata?.nodeId,
-      toId: toShape.metadata?.nodeId,
-      mode: mode,
-      fromShape: fromShape,
-      toShape: toShape,
-      fabricObject: null // Will be set when created
-    };
-
-    setConnections(prev => [...prev, connectionData]);
-    
-    // Create the visual connection
-    updateConnectionVisual(connectionData);
-    
-    return connectionData;
-  }, []);
-
   const updateConnectionVisual = useCallback((connection) => {
     if (!fabricCanvas.current) return;
 
@@ -2694,6 +2674,29 @@ useEffect(() => {
     fabricCanvas.current.add(connectionGroup);
     fabricCanvas.current.sendToBack(connectionGroup); // Send connections to back
   }, []);
+
+  // Persistent connection functions
+  const createPersistentConnection = useCallback((fromShape, toShape, mode = 'directional') => {
+    const connectionId = `conn_${Date.now()}_${Math.random()}`;
+    
+    // Store connection data
+    const connectionData = {
+      id: connectionId,
+      fromId: fromShape.metadata?.nodeId,
+      toId: toShape.metadata?.nodeId,
+      mode: mode,
+      fromShape: fromShape,
+      toShape: toShape,
+      fabricObject: null // Will be set when created
+    };
+
+    setConnections(prev => [...prev, connectionData]);
+    
+    // Create the visual connection
+    updateConnectionVisual(connectionData);
+    
+    return connectionData;
+  }, [updateConnectionVisual]);
 
   const updateAllConnections = useCallback(() => {
     connections.forEach(conn => updateConnectionVisual(conn));

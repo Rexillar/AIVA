@@ -10,7 +10,7 @@
  *=================================================================
  * Copyright (c) 2024 Mohitraj Jadeja. All rights reserved.
  *=================================================================*/
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   Link,
   useNavigate,

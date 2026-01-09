@@ -21,6 +21,8 @@ import {
   clearConversationState,
   processStateResponse,
   shouldUseState,
+  startExplicitChoice,
+  isAmbiguousInput,
   STATE_TYPES
 } from './conversationStateTracker.js';
 import ChatHistory from '../models/ChatHistory.js';
@@ -31,7 +33,131 @@ import Note from '../models/note.js';
 import Notification from '../models/notification.js';
 import Reminder from '../models/reminderModel.js';
 
-const getApiKey = () => process.env.GEMINI_API_KEY;
+const getApiKey = () => {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
+    console.error('⚠️ GEMINI_API_KEY is not set in environment variables');
+  } else {
+    console.log(`✅ GEMINI_API_KEY loaded: ${key.substring(0, 8)}...${key.substring(key.length - 4)}`);
+  }
+  return key;
+};
+
+/**
+ * Circuit breaker for API calls
+ */
+class CircuitBreaker {
+  constructor() {
+    this.failureCount = 0;
+    this.lastFailureTime = null;
+    this.state = 'CLOSED'; // CLOSED, OPEN, HALF_OPEN
+    this.threshold = 3; // Open circuit after 3 failures
+    this.timeout = 30000; // Reset after 30 seconds
+  }
+
+  async execute(fn) {
+    if (this.state === 'OPEN') {
+      if (Date.now() - this.lastFailureTime > this.timeout) {
+        this.state = 'HALF_OPEN';
+        console.log('Circuit breaker: HALF_OPEN - attempting request');
+      } else {
+        throw new Error('Circuit breaker is OPEN - service unavailable');
+      }
+    }
+
+    try {
+      const result = await fn();
+      this.onSuccess();
+      return result;
+    } catch (error) {
+      this.onFailure();
+      throw error;
+    }
+  }
+
+  onSuccess() {
+    this.failureCount = 0;
+    this.state = 'CLOSED';
+  }
+
+  onFailure() {
+    this.failureCount++;
+    this.lastFailureTime = Date.now();
+    if (this.failureCount >= this.threshold) {
+      this.state = 'OPEN';
+      console.error(`Circuit breaker: OPEN after ${this.failureCount} failures`);
+    }
+  }
+}
+
+const circuitBreaker = new CircuitBreaker();
+
+/**
+ * Retry with exponential backoff
+ */
+const retryWithBackoff = async (fn, maxRetries = 3, baseDelay = 1000) => {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const isLastAttempt = attempt === maxRetries - 1;
+      const is503 = error.message.includes('503') || error.message.includes('UNAVAILABLE');
+      const is429 = error.message.includes('429') || error.message.includes('RESOURCE_EXHAUSTED');
+      
+      if (isLastAttempt || (!is503 && !is429)) {
+        throw error;
+      }
+      
+      const delay = baseDelay * Math.pow(2, attempt);
+      console.log(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+};
+
+/**
+ * Get fallback response based on intent
+ */
+const getFallbackResponse = (classification, userMessage) => {
+  const { type } = classification;
+  
+  // For create operations, provide guidance
+  if (type === INTENT_TYPES.CREATE_TASK) {
+    return {
+      intent: 'error',
+      reply: `I'm having trouble creating tasks right now. Try: "Create a task for [task name]" or use the task creation interface.`,
+      action: null,
+      fallback: true
+    };
+  }
+  
+  if (type === INTENT_TYPES.CREATE_HABIT) {
+    return {
+      intent: 'error',
+      reply: `The AI service is temporarily unavailable. You can create a habit using the habits page directly.`,
+      action: null,
+      fallback: true
+    };
+  }
+  
+  // For list operations, suggest direct navigation
+  if (type === INTENT_TYPES.LIST_TASKS) {
+    return {
+      intent: 'error',
+      reply: `I can't process that right now. You can view your tasks by navigating to the Tasks page.`,
+      action: null,
+      fallback: true
+    };
+  }
+  
+  // Generic fallback
+  return {
+    intent: 'error',
+    reply: `I'm experiencing temporary difficulties. Please try again in a moment, or use the navigation menu to access the feature you need.`,
+    action: null,
+    fallback: true
+  };
+};
 
 /**
  * Find workspace by name for a user
@@ -51,6 +177,97 @@ const findWorkspaceByName = async (workspaceName, userId) => {
     console.error('Workspace lookup error:', error);
     return null;
   }
+};
+
+/**
+ * Extract workspace mention from message
+ * Handles patterns like "in workspace X", "in my workspace X", "in the workspace X"
+ */
+const extractWorkspaceMention = async (message, userId) => {
+  const patterns = [
+    /(?:in|to)\s+(?:the\s+)?(?:my\s+)?workspace\s+['""]?([^'""\s]+)['""]?/i,
+    /(?:in|to)\s+['""]?([^'""\s]+)\s+workspace['""]?/i,
+    /workspace\s+['""]?([0-9]+)['""]?/i  // For workspace IDs/numbers
+  ];
+  
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match) {
+      const workspaceName = match[1].trim();
+      const workspace = await findWorkspaceByName(workspaceName, userId);
+      return workspace;
+    }
+  }
+  
+  return null;
+};
+
+/**
+ * Get current workspace info
+ */
+const getCurrentWorkspace = async (workspaceId) => {
+  try {
+    return await Workspace.findById(workspaceId).select('_id name').lean();
+  } catch (error) {
+    return null;
+  }
+};
+
+/**
+ * Detect workspace ambiguity and return confirmation dialog data
+ */
+const detectWorkspaceAmbiguity = async (message, userId, currentWorkspaceId, intent) => {
+  const mentionedWorkspace = await extractWorkspaceMention(message, userId);
+  
+  if (!mentionedWorkspace) {
+    return null; // No workspace mentioned
+  }
+  
+  const currentWorkspace = await getCurrentWorkspace(currentWorkspaceId);
+  
+  if (!currentWorkspace) {
+    return null; // No current workspace
+  }
+  
+  // Check if mentioned workspace is different from current
+  if (mentionedWorkspace._id.toString() === currentWorkspace._id.toString()) {
+    return null; // Same workspace, no ambiguity
+  }
+  
+  // Extract task/item name from message
+  const taskMatch = message.match(/(?:task|item)\s+['""]?([^'""\s]+)['""]?/i);
+  const itemName = taskMatch ? taskMatch[1] : 'item';
+  
+  // Return ambiguity dialog data
+  return {
+    requiresExplicitChoice: true,
+    choiceData: {
+      title: "Choose Workspace",
+      question: `Where would you like to ${intent} "${itemName}"?`,
+      intent: intent,
+      options: [
+        {
+          id: 'current_workspace',
+          label: `${currentWorkspace.name} (Current)`,
+          description: 'Use the workspace you\'re currently viewing',
+          icon: '📍',
+          workspaceId: currentWorkspace._id,
+          workspaceName: currentWorkspace.name
+        },
+        {
+          id: 'mentioned_workspace',
+          label: mentionedWorkspace.name,
+          description: 'Switch to the mentioned workspace',
+          icon: '🔄',
+          workspaceId: mentionedWorkspace._id,
+          workspaceName: mentionedWorkspace.name
+        }
+      ]
+    },
+    mentionedWorkspace,
+    currentWorkspace,
+    itemName
+  };
 };
 
 /**
@@ -341,10 +558,114 @@ export const getImprovedAIResponse = async (userMessage, userId, workspaceId, op
       };
     }
     
+    // ==================== PRIORITY 1: CHECK CONFIRMATION STATES FIRST ====================
+    // This MUST come before workspace ambiguity checks because "yes" is ambiguous
+    const currentState = await getConversationState(userId, workspaceId);
+    
+    console.log(`🔍 Checking conversation state:`, {
+      hasState: !!currentState,
+      stateType: currentState?.type,
+      action: currentState?.context?.action,
+      message: userMessage
+    });
+    
+    if (currentState?.type === STATE_TYPES.AWAITING_CONFIRMATION) {
+      const action = currentState?.context?.action;
+      
+      if (action === 'delete_all_tasks' || action === 'delete_all_habits') {
+        console.log(`⚠️ Confirmation pending for ${action} - processing user response...`);
+        
+        // User is responding to a confirmation prompt - be flexible with responses
+        const userResponse = userMessage.trim().toLowerCase();
+        
+        // Check for confirmation (any phrase containing affirmative keywords)
+        const isConfirming = /\b(yes|confirm|sure|ok|okay|do it|go ahead|proceed|delete|affirmative)\b/.test(userResponse);
+        const isCancelling = /\b(no|cancel|abort|stop|nevermind|never mind|don't|dont|nope)\b/.test(userResponse);
+        
+        console.log(`🎯 User response analysis:`, {
+          response: userResponse,
+          isConfirming,
+          isCancelling
+        });
+        
+        if (isConfirming && !isCancelling) {
+          console.log(`✅ Confirmation received - executing ${action}...`);
+          
+          if (action === 'delete_all_tasks') {
+            // Delete all tasks in workspace
+            const result = await Task.deleteMany({
+              workspace: workspaceId,
+              $or: [{ creator: userId }, { assignees: userId }]
+            });
+            
+            await clearConversationState(userId, workspaceId);
+            
+            return {
+              intent: 'delete_all_tasks_confirmed',
+              reply: `✅ Successfully deleted ${result.deletedCount} task(s) from your workspace.`,
+              action: {
+                type: 'DELETE_ALL_TASKS',
+                workspaceId: workspaceId,
+                deletedCount: result.deletedCount
+              },
+              data: { deletedCount: result.deletedCount }
+            };
+          } else if (action === 'delete_all_habits') {
+            // Delete all habits in workspace
+            const result = await Habit.deleteMany({
+              user: userId,
+              workspace: workspaceId,
+              isActive: true
+            });
+            
+            await clearConversationState(userId, workspaceId);
+            
+            return {
+              intent: 'delete_all_habits_confirmed',
+              reply: `✅ Successfully deleted ${result.deletedCount} habit(s) from your workspace.`,
+              action: {
+                type: 'DELETE_ALL_HABITS',
+                workspaceId: workspaceId,
+                deletedCount: result.deletedCount
+              },
+              data: { deletedCount: result.deletedCount }
+            };
+          }
+        } else if (isCancelling) {
+          // User cancelled
+          await clearConversationState(userId, workspaceId);
+          return {
+            intent: `${action}_cancelled`,
+            reply: "Action cancelled.",
+            action: null
+          };
+        } else {
+          // Ambiguous response - ask again
+          return {
+            intent: 'confirmation_required',
+            reply: "Please respond with 'yes' to confirm or 'cancel' to abort.",
+            requiresConfirmation: true,
+            action: null
+          };
+        }
+      }
+    }
+    
+    // ==================== PRIORITY 2: CHECK WORKSPACE AMBIGUITY STATES ====================
     // Step 0: Check for active conversation state (multi-turn interactions)
     try {
       const hasActiveState = await shouldUseState(userId, workspaceId);
       if (hasActiveState) {
+        // Check if input is ambiguous (like "yes", "no", etc.)
+        if (isAmbiguousInput(userMessage)) {
+          return {
+            intent: 'ask_clarification',
+            reply: "I'm not sure which option you meant. Please select one explicitly from the options above, or type the specific name.",
+            action: null,
+            conversationStateActive: true
+          };
+        }
+        
         const stateResult = await processStateResponse(userId, workspaceId, userMessage);
         
         if (stateResult?.completed) {
@@ -437,13 +758,141 @@ export const getImprovedAIResponse = async (userMessage, userId, workspaceId, op
       // Continue with normal flow if state processing fails
     }
     
-    // Step 1: Classify intent
+    // Step 2: Classify intent
     classification = classifyIntent(userMessage);
     
-    // Step 2: Handle direct queries without AI
+    console.log(`🎯 Intent Classification:`, {
+      type: classification.type,
+      confidence: classification.confidence,
+      requiresAI: classification.requiresAI,
+      shouldUseAI: shouldUseAI(classification),
+      message: userMessage
+    });
+    
+    // CRITICAL: Early logging for high-confidence commands
+    const bypassGemini = !shouldUseAI(classification);
+    if (bypassGemini) {
+      console.log(`✅ HIGH CONFIDENCE - Will bypass Gemini for ${classification.type}`);
+    }
+    
+    // Step 3: Check for workspace ambiguity (before executing any action)
+    if (classification.type === INTENT_TYPES.CREATE_TASK || 
+        classification.type === INTENT_TYPES.CREATE_HABIT ||
+        classification.type === INTENT_TYPES.CREATE_NOTE) {
+      
+      const ambiguityCheck = await detectWorkspaceAmbiguity(
+        userMessage, 
+        userId, 
+        workspaceId, 
+        classification.type === INTENT_TYPES.CREATE_TASK ? 'create task' : 
+        classification.type === INTENT_TYPES.CREATE_HABIT ? 'create habit' : 'create note'
+      );
+      
+      if (ambiguityCheck) {
+        // Save explicit choice state
+        await startExplicitChoice(userId, workspaceId, {
+          question: ambiguityCheck.choiceData.question,
+          options: ambiguityCheck.choiceData.options,
+          originalIntent: classification.type,
+          contextData: {
+            itemName: ambiguityCheck.itemName,
+            userMessage: userMessage
+          }
+        });
+        
+        return {
+          intent: 'workspace_ambiguity',
+          reply: `You're currently in "${ambiguityCheck.currentWorkspace.name}", but you mentioned "${ambiguityCheck.mentionedWorkspace.name}". Where would you like me to ${ambiguityCheck.choiceData.intent} "${ambiguityCheck.itemName}"?`,
+          requiresExplicitChoice: true,
+          choiceData: ambiguityCheck.choiceData,
+          action: null
+        };
+      }
+    }
+    
+    // Step 4: Check for destructive actions requiring confirmation
+    if (classification.type === INTENT_TYPES.DELETE_ALL_TASKS) {
+      console.log(`🗑️ DELETE_ALL_TASKS detected - checking task count...`);
+      
+      // First, check how many tasks exist
+      const taskCount = await Task.countDocuments({
+        workspace: workspaceId,
+        $or: [{ creator: userId }, { assignees: userId }],
+        isDeleted: { $ne: true }
+      });
+      
+      if (taskCount === 0) {
+        return {
+          intent: 'no_tasks_to_delete',
+          reply: "There are no tasks in your current workspace to delete.",
+          action: null
+        };
+      }
+      
+      // Ask for confirmation (state already checked above)
+      const confirmState = await getConversationState(userId, workspaceId);
+      confirmState.setState(STATE_TYPES.AWAITING_CONFIRMATION, {
+        action: 'delete_all_tasks',
+        workspaceId: workspaceId,
+        taskCount: taskCount
+      });
+      await saveConversationState(confirmState);
+      
+      console.log(`💾 Saved confirmation state for ${taskCount} tasks`);
+      
+      return {
+        intent: 'delete_all_tasks_confirmation',
+        reply: `⚠️ You have **${taskCount} task(s)** in this workspace.\n\nAre you sure you want to delete all of them? This action cannot be undone.\n\n**Type 'yes' to confirm** or 'cancel' to abort.`,
+        requiresConfirmation: true,
+        action: null,
+        data: { taskCount }
+      };
+    }
+    
+    if (classification.type === INTENT_TYPES.DELETE_ALL_HABITS) {
+      console.log(`🗑️ DELETE_ALL_HABITS detected - checking habit count...`);
+      
+      // First, check how many habits exist
+      const habitCount = await Habit.countDocuments({
+        user: userId,
+        workspace: workspaceId,
+        isActive: true
+      });
+      
+      if (habitCount === 0) {
+        return {
+          intent: 'no_habits_to_delete',
+          reply: "There are no active habits in your current workspace to delete.",
+          action: null
+        };
+      }
+      
+      // Ask for confirmation
+      const confirmState = await getConversationState(userId, workspaceId);
+      confirmState.setState(STATE_TYPES.AWAITING_CONFIRMATION, {
+        action: 'delete_all_habits',
+        workspaceId: workspaceId,
+        habitCount: habitCount
+      });
+      await saveConversationState(confirmState);
+      
+      console.log(`💾 Saved confirmation state for ${habitCount} habits`);
+      
+      return {
+        intent: 'delete_all_habits_confirmation',
+        reply: `⚠️ You have **${habitCount} habit(s)** in this workspace.\n\nAre you sure you want to delete all of them? This action cannot be undone.\n\n**Type 'yes' to confirm** or 'cancel' to abort.`,
+        requiresConfirmation: true,
+        action: null,
+        data: { habitCount }
+      };
+    }
+    
+    // Step 5: Handle direct queries without AI
     if (!shouldUseAI(classification)) {
+      console.log(`🚫 Skipping Gemini API - attempting direct query for ${classification.type}`);
       const directResult = await handleDirectQuery(classification, userId, workspaceId, userMessage);
       if (directResult) {
+        console.log(`✅ Direct query successful - returning result`);
         // Store in history
         await ChatHistory.findOneAndUpdate(
           { user: userId, workspaceId: workspaceId },
@@ -463,6 +912,15 @@ export const getImprovedAIResponse = async (userMessage, userId, workspaceId, op
         
         return directResult;
       }
+      
+      // CRITICAL: If shouldUseAI is false but no handler exists, return error instead of calling Gemini
+      console.error(`❌ No handler for high-confidence intent: ${classification.type}`);
+      return {
+        intent: 'unhandled_intent',
+        reply: `I understood your request as "${classification.type}" but this action isn't implemented yet. Please try a different command or rephrase your request.`,
+        action: null,
+        data: { intentType: classification.type }
+      };
     }
     
     // Step 3: Get context (priority-based, incremental)
@@ -480,26 +938,89 @@ export const getImprovedAIResponse = async (userMessage, userId, workspaceId, op
       prompt = buildPrompt(userMessage, context, classification.type);
     }
     
-    // Step 5: Call AI with streaming support (simulated for now)
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: prompt }]
-          }]
-        })
+    // Step 5: Call AI with retry logic and circuit breaker
+    let data;
+    try {
+      data = await circuitBreaker.execute(async () => {
+        return await retryWithBackoff(async () => {
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{
+                  parts: [{ text: prompt }]
+                }]
+              })
+            }
+          );
+          
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errorCode = errorData.error?.code || response.status;
+            const errorMessage = errorData.error?.message || response.statusText;
+            
+            console.error('Gemini API Error:', {
+              status: response.status,
+              code: errorCode,
+              message: errorMessage
+            });
+            
+            // Provide user-friendly error messages
+            if (errorCode === 503 || errorMessage.includes('overloaded')) {
+              throw new Error('SERVICE_OVERLOADED');
+            } else if (errorCode === 429) {
+              throw new Error('RATE_LIMIT_EXCEEDED');
+            } else if (errorCode === 401 || errorCode === 403) {
+              throw new Error('AUTHENTICATION_ERROR');
+            } else {
+              throw new Error(`API_ERROR: ${errorMessage}`);
+            }
+          }
+          
+          return await response.json();
+        }, 3, 1000);
+      });
+    } catch (error) {
+      console.error('AI Service Error:', error.message);
+      
+      // Return user-friendly fallback based on error type
+      if (error.message === 'SERVICE_OVERLOADED') {
+        return {
+          intent: 'error',
+          reply: `The AI service is currently overloaded. I've noted your request. You can try again in a moment or use the direct interface to ${classification.type === INTENT_TYPES.CREATE_TASK ? 'create tasks' : 'complete your action'}.`,
+          action: null,
+          error: 'service_overloaded',
+          fallback: true
+        };
+      } else if (error.message === 'RATE_LIMIT_EXCEEDED') {
+        return {
+          intent: 'error',
+          reply: `I'm receiving too many requests right now. Please wait a moment and try again.`,
+          action: null,
+          error: 'rate_limit',
+          fallback: true
+        };
+      } else if (error.message.includes('Circuit breaker')) {
+        return {
+          intent: 'error',
+          reply: `The AI service is temporarily unavailable. Please try again in 30 seconds or use the navigation menu.`,
+          action: null,
+          error: 'circuit_open',
+          fallback: true
+        };
+      } else {
+        return getFallbackResponse(classification, userMessage);
       }
-    );
-    
-    if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.status}`);
     }
     
-    const data = await response.json();
-    const responseText = data.candidates[0].content.parts[0].text;
+    const responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!responseText) {
+      console.error('Invalid AI response structure:', JSON.stringify(data));
+      return getFallbackResponse(classification, userMessage);
+    }
     
     // Step 6: Validate response with fallbacks
     const validation = validateResponse(responseText);
@@ -602,10 +1123,27 @@ export const getImprovedAIResponse = async (userMessage, userId, workspaceId, op
   } catch (error) {
     console.error('Improved Gemini error:', error);
     
+    // Check if error already has fallback response (from circuit breaker or retry logic)
+    if (error.fallback) {
+      return error;
+    }
+    
     // Provide helpful fallback responses based on intent type
     let fallbackReply = 'I encountered an error, but I can still help with basic queries. Try asking me to list your tasks or habits.';
+    let errorType = 'general_error';
     
-    if (classification?.type) {
+    // Check for specific error types
+    if (error.message?.includes('SERVICE_OVERLOADED') || error.message?.includes('overloaded')) {
+      errorType = 'service_overloaded';
+      fallbackReply = 'The AI service is currently overloaded. You can try again in a moment or use the direct interface.';
+    } else if (error.message?.includes('RATE_LIMIT')) {
+      errorType = 'rate_limit';
+      fallbackReply = 'Too many requests right now. Please wait a moment and try again.';
+    } else if (error.message?.includes('Circuit breaker')) {
+      errorType = 'circuit_open';
+      fallbackReply = 'The AI service is temporarily unavailable. Please try again in 30 seconds.';
+    } else if (classification?.type) {
+      // Intent-specific fallbacks
       switch (classification.type) {
         case INTENT_TYPES.CREATE_TASK:
           fallbackReply = 'I\'m having trouble creating tasks right now. Try: "Create a task for [task name]" or use the task creation interface.';
@@ -636,7 +1174,9 @@ export const getImprovedAIResponse = async (userMessage, userId, workspaceId, op
       intent: 'error',
       reply: fallbackReply,
       action: null,
-      error: error.message
+      error: errorType,
+      errorMessage: error.message,
+      fallback: true
     };
   }
 };

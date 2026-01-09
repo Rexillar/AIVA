@@ -10,8 +10,7 @@
  *=================================================================
  * Copyright (c) 2024 Mohitraj Jadeja. All rights reserved.
  *=================================================================*/
-import React, { useState, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useState, useMemo } from "react";
 import { useWorkspace } from "../components/workspace/provider/WorkspaceProvider";
 import {
   useGetWorkspaceMembersQuery,
@@ -23,16 +22,7 @@ import {
 import { LoadingSpinner } from "../components/shared/feedback/LoadingSpinner";
 import Avatar from "../components/shared/display/Avatar";
 import { toast } from "sonner";
-import {
-  UserCircleIcon,
-  PencilIcon,
-  TrashIcon,
-} from "@heroicons/react/24/outline";
-import { Modal } from "../components/shared/dialog/Modal";
 import { Button } from "../components/shared/buttons/Button";
-import { Textbox } from "../components/shared/inputs/Textbox";
-import { Select } from "../components/shared/inputs/Select";
-import { Dialog } from "@headlessui/react";
 import TeamInviteModal from "../components/workspace/team/TeamInviteModal";
 import { useSelector } from "react-redux";
 
@@ -257,7 +247,7 @@ const TeamPage = () => {
     // });
 
     return { active, inactive };
-  }, [processedMembers, membersData]);
+  }, [processedMembers]);
 
   // Check if current user is admin
   const isCurrentUserAdmin = useMemo(() => {
@@ -293,111 +283,6 @@ const TeamPage = () => {
         error?.data?.message ||
           error.message ||
           "Failed to update member status",
-        { id: toastId },
-      );
-    }
-  };
-
-  const handleRemoveMember = async (userId) => {
-    if (!userId || !workspaceId) {
-      // console.error('Missing required data:', { userId, workspaceId });
-      toast.error("Cannot remove member: Missing required data");
-      return;
-    }
-
-    const toastId = toast.loading("Removing member...");
-    try {
-      const result = await removeMember({
-        workspaceId,
-        userId,
-      }).unwrap();
-
-      if (result.success) {
-        toast.success("Member removed successfully", { id: toastId });
-        refetchMembers(); // Refresh the members list
-      } else {
-        throw new Error(result.message || "Failed to remove member");
-      }
-    } catch (error) {
-      // console.error('Error removing member:', error);
-      toast.error(error.message || "Failed to remove member", { id: toastId });
-    }
-  };
-
-  const handleUpdateRole = async (userId, newRole) => {
-    if (!userId || !workspaceId) {
-      // console.error('Missing required data:', { userId, workspaceId });
-      toast.error("Cannot update member role: Missing required data");
-      return;
-    }
-
-    const toastId = toast.loading("Updating member role...");
-    try {
-      const result = await updateMemberRole({
-        workspaceId,
-        userId,
-        data: { role: newRole },
-      }).unwrap();
-
-      if (!result || result.status === false) {
-        throw new Error(result?.message || "Failed to update member role");
-      }
-
-      toast.success("Member role updated successfully", { id: toastId });
-      await refetchMembers();
-    } catch (error) {
-      // console.error('Error updating member role:', error);
-      toast.error(
-        error?.data?.message || error.message || "Failed to update member role",
-        { id: toastId },
-      );
-    }
-  };
-
-  const handleInviteMember = async ({ email, role }) => {
-    // Input validation
-    if (!workspaceId || !email || !role) {
-      const missingField = !workspaceId
-        ? "Workspace ID"
-        : !email
-          ? "Email"
-          : "Role";
-      toast.error(`${missingField} is required`);
-      return;
-    }
-
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      toast.error("Please enter a valid email address");
-      return;
-    }
-
-    // Role validation
-    if (!["admin", "member"].includes(role)) {
-      toast.error("Invalid role selected");
-      return;
-    }
-
-    const toastId = toast.loading("Sending invitation...");
-    try {
-      // console.log('Sending invitation request:', { workspaceId, email, role });
-
-      await inviteMember({
-        workspaceId,
-        email,
-        role,
-      }).unwrap();
-
-      toast.success("Invitation sent successfully", { id: toastId });
-      setIsInviteModalOpen(false);
-
-      // Refresh the members list
-      await refetchMembers();
-    } catch (error) {
-      // console.error('Failed to send invitation:', error);
-      toast.error(
-        error.data?.message || error.message || "Failed to send invitation",
         { id: toastId },
       );
     }

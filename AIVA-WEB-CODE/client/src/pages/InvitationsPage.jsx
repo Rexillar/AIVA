@@ -60,7 +60,6 @@ const InvitationCard = ({ invitation, onAccept, onReject, isProcessing }) => {
 };
 
 const InvitationsPage = () => {
-  const { user } = useSelector((state) => state.auth);
   const { data, isLoading, error, refetch } = useGetWorkspaceInvitationsQuery();
   const [handleInvitation, { isLoading: isProcessing }] =
     useHandleInvitationMutation();

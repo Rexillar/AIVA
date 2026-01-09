@@ -143,13 +143,11 @@ const TaskDetails = () => {
   const [updateTask] = useUpdateTaskMutation();
   const [updateTaskSubtasks] = useUpdateTaskSubtasksMutation();
   const [createSubtask] = useCreateSubtaskMutation();
-  const [updateSubtask] = useUpdateSubtaskMutation();
-  const [deleteSubtask] = useDeleteSubtaskMutation();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingSubtask, setEditingSubtask] = useState(null);
   const [editValue, setEditValue] = useState("");
-  const [task, setTask] = useState(null);
   const [updatingSubtaskIds, setUpdatingSubtaskIds] = useState(new Set());
+  const [lastToggleTime, setLastToggleTime] = useState({});
 
   const isValidWorkspaceId = Boolean(workspaceId && workspaceId.length === 24);
 
@@ -239,7 +237,7 @@ const TaskDetails = () => {
   }, [currentWorkspace, workspaceId, dispatch, isValidWorkspaceId]);
 
   const {
-    data: taskData,
+    data: task,  // CHANGED: Use data directly as 'task'
     isLoading: isTaskLoading,
     error,
     refetch,
@@ -247,7 +245,7 @@ const TaskDetails = () => {
     { taskId, workspaceId },
     {
       skip: !taskId || !isValidWorkspaceId,
-      refetchOnMountOrArgChange: true,
+      // Let RTK Query handle caching normally
     },
   );
 
@@ -255,8 +253,10 @@ const TaskDetails = () => {
   const isLoading = isTaskLoading || isWorkspaceLoading;
 
   // Get workspace name and description from the response with proper fallback
-  const workspaceInfo =
-    currentWorkspace || workspaceData?.data || workspaceData || {};
+  const workspaceInfo = useMemo(() =>
+    currentWorkspace || workspaceData?.data || workspaceData || {},
+    [currentWorkspace, workspaceData]
+  );
   const workspaceName =
     workspaceInfo?.name ||
     workspaceInfo?.workspace?.name ||
@@ -274,25 +274,7 @@ const TaskDetails = () => {
     }
   }, [workspaceData, workspaceInfo, workspaceName, workspaceDescription]);
 
-  // Update local task state when data changes
-  useEffect(() => {
-    if (taskData && !updatingSubtaskIds.size) {
-      const currentSubtasks = task?.subtasks || [];
-      const newSubtasks = taskData.subtasks || [];
-
-      // Deep compare subtasks to check for actual changes
-      const subtasksChanged =
-        JSON.stringify(currentSubtasks) !== JSON.stringify(newSubtasks);
-
-      // Only update if task is null (initial load) or if subtasks have actually changed
-      if (!task || subtasksChanged) {
-        //console.log('Updating task state with new data:', taskData);
-        setTask(taskData);
-      }
-    }
-  }, [taskData, updatingSubtaskIds, task]);
-
-  // Calculate statistics
+  // Calculate statistics - uses 'task' directly from query
   const taskStats = useMemo(() => {
     if (!task?.subtasks) return null;
 
@@ -363,6 +345,171 @@ const TaskDetails = () => {
     },
   };
 
+  // SIMPLIFIED HANDLERS - No local state, just API calls + refetch
+
+  const handleStatusChange = async (newStatus) => {
+    try {
+      await updateTask({
+        taskId,
+        workspaceId,
+        updates: { stage: newStatus },
+      }).unwrap();
+      toast.success("Task status updated");
+      refetch();
+    } catch (error) {
+      toast.error("Failed to update task status");
+    }
+  };
+
+  const handleAddSubtask = async (title) => {
+    if (!title.trim()) {
+      toast.error("Subtask title cannot be empty");
+      return;
+    }
+
+    try {
+      await createSubtask({
+        taskId,
+        workspaceId,
+        title: title.trim(),
+      }).unwrap();
+
+      toast.success("Subtask added successfully");
+      refetch();
+    } catch (error) {
+      toast.error(error?.data?.message || "Failed to add subtask");
+    }
+  };
+
+  const handleSubtaskStatusToggle = async (subtaskId) => {
+    if (!subtaskId || updatingSubtaskIds.has(subtaskId)) {
+      return;
+    }
+
+    // Debounce
+    const now = Date.now();
+    const lastTime = lastToggleTime[subtaskId] || 0;
+    if (now - lastTime < 1000) {
+      return;
+    }
+    setLastToggleTime(prev => ({ ...prev, [subtaskId]: now }));
+
+    const subtask = task?.subtasks?.find((st) => st._id === subtaskId);
+    if (!subtask) {
+      toast.error("Subtask not found");
+      return;
+    }
+
+    const newStatus = subtask.status === "completed" ? "todo" : "completed";
+    
+    setUpdatingSubtaskIds((prev) => new Set([...prev, subtaskId]));
+
+    const updatedSubtasks = task.subtasks.map((st) =>
+      st._id === subtaskId ? { ...st, status: newStatus } : st
+    );
+
+    try {
+      await updateTaskSubtasks({
+        taskId,
+        workspaceId,
+        subtasks: updatedSubtasks,
+      }).unwrap();
+
+      toast.success(`Subtask marked as ${newStatus}`);
+      await refetch();
+      
+    } catch (error) {
+      toast.error(error?.data?.message || "Failed to update subtask status");
+    } finally {
+      setUpdatingSubtaskIds((prev) => {
+        const next = new Set(prev);
+        next.delete(subtaskId);
+        return next;
+      });
+    }
+  };
+
+  const handleEditSubtask = async (subtaskId) => {
+    if (!editValue.trim()) {
+      toast.error("Subtask title cannot be empty");
+      return;
+    }
+
+    try {
+      const updatedSubtasks = task.subtasks.map((st) =>
+        st._id === subtaskId ? { ...st, title: editValue.trim() } : st,
+      );
+
+      await updateTaskSubtasks({
+        taskId,
+        workspaceId,
+        subtasks: updatedSubtasks,
+      }).unwrap();
+
+      toast.success("Subtask updated successfully");
+      setEditingSubtask(null);
+      setEditValue("");
+      await refetch();
+      
+    } catch (error) {
+      toast.error(error?.data?.message || "Failed to update subtask");
+    }
+  };
+
+  const handleDeleteSubtask = async (subtaskId) => {
+    try {
+      const updatedSubtasks = task.subtasks.filter(
+        (st) => st._id !== subtaskId,
+      );
+
+      await updateTaskSubtasks({
+        taskId,
+        workspaceId,
+        subtasks: updatedSubtasks,
+      }).unwrap();
+
+      toast.success("Subtask deleted successfully");
+      await refetch();
+      
+    } catch (error) {
+      toast.error(error?.data?.message || "Failed to delete subtask");
+    }
+  };
+
+  const handleSubtaskStatusChange = async (subtaskId, newStatus) => {
+    if (updatingSubtaskIds.has(subtaskId)) {
+      return;
+    }
+
+    setUpdatingSubtaskIds((prev) => new Set([...prev, subtaskId]));
+
+    const updatedSubtasks = task.subtasks.map((st) =>
+      st._id === subtaskId ? { ...st, status: newStatus } : st
+    );
+
+    try {
+      await updateTaskSubtasks({
+        taskId,
+        workspaceId,
+        subtasks: updatedSubtasks,
+      }).unwrap();
+
+      toast.success(`Subtask status updated to ${newStatus}`);
+      await refetch();
+      
+    } catch (error) {
+      toast.error("Failed to update subtask status");
+    } finally {
+      setUpdatingSubtaskIds((prev) => {
+        const next = new Set(prev);
+        next.delete(subtaskId);
+        return next;
+      });
+    }
+  };
+
+
+  // NOW the conditional returns - all hooks are already called above
   // Handle invalid IDs with more specific error messages
   if (!taskId || !isValidWorkspaceId) {
     return (
@@ -454,166 +601,6 @@ const TaskDetails = () => {
       </div>
     );
   }
-
-  const handleStatusChange = async (newStatus) => {
-    try {
-      await updateTask({
-        taskId,
-        workspaceId,
-        updates: { stage: newStatus },
-      }).unwrap();
-      toast.success("Task status updated");
-    } catch (error) {
-      toast.error("Failed to update task status");
-    }
-  };
-
-  const handleAddSubtask = async (title) => {
-    if (!title.trim()) {
-      toast.error("Subtask title cannot be empty");
-      return;
-    }
-
-    try {
-      await createSubtask({
-        taskId,
-        workspaceId,
-        title: title.trim(),
-      }).unwrap();
-
-      toast.success("Subtask added successfully");
-      refetch();
-    } catch (error) {
-      //console.error('Error adding subtask:', error);
-      toast.error(error?.data?.message || "Failed to add subtask");
-    }
-  };
-
-  const handleSubtaskStatusToggle = async (subtaskId) => {
-    if (!subtaskId || updatingSubtaskIds.has(subtaskId)) {
-      return;
-    }
-
-    try {
-      setUpdatingSubtaskIds((prev) => new Set([...prev, subtaskId]));
-
-      const subtask = task.subtasks.find((st) => st._id === subtaskId);
-      if (!subtask) {
-        toast.error("Subtask not found");
-        return;
-      }
-
-      const newStatus = subtask.status === "completed" ? "todo" : "completed";
-
-      // First update the local state optimistically
-      const updatedSubtasks = task.subtasks.map((st) =>
-        st._id === subtaskId ? { ...st, status: newStatus } : st,
-      );
-      setTask((prev) => ({ ...prev, subtasks: updatedSubtasks }));
-
-      // Then send the update to the server
-      await updateTaskSubtasks({
-        taskId,
-        workspaceId,
-        subtasks: updatedSubtasks,
-      }).unwrap();
-
-      toast.success(`Subtask marked as ${newStatus}`);
-    } catch (error) {
-      // Revert the optimistic update on error
-      setTask(taskData);
-      //console.error('Error toggling subtask status:', error);
-      toast.error(error?.data?.message || "Failed to update subtask status");
-    } finally {
-      setUpdatingSubtaskIds((prev) => {
-        const next = new Set(prev);
-        next.delete(subtaskId);
-        return next;
-      });
-    }
-  };
-
-  const handleEditSubtask = async (subtaskId) => {
-    if (!editValue.trim()) {
-      toast.error("Subtask title cannot be empty");
-      return;
-    }
-
-    try {
-      const updatedSubtasks = task.subtasks.map((st) =>
-        st._id === subtaskId ? { ...st, title: editValue.trim() } : st,
-      );
-
-      // First update the local state optimistically
-      setTask((prev) => ({ ...prev, subtasks: updatedSubtasks }));
-
-      // Then send the update to the server
-      await updateTaskSubtasks({
-        taskId,
-        workspaceId,
-        subtasks: updatedSubtasks,
-      }).unwrap();
-
-      toast.success("Subtask updated successfully");
-      setEditingSubtask(null);
-      setEditValue("");
-    } catch (error) {
-      // Revert the optimistic update on error
-      setTask(taskData);
-      //console.error('Error updating subtask:', error);
-      toast.error(error?.data?.message || "Failed to update subtask");
-    }
-  };
-
-  const handleDeleteSubtask = async (subtaskId) => {
-    try {
-      const updatedSubtasks = task.subtasks.filter(
-        (st) => st._id !== subtaskId,
-      );
-
-      // First update the local state optimistically
-      setTask((prev) => ({ ...prev, subtasks: updatedSubtasks }));
-
-      // Then send the update to the server
-      await updateTaskSubtasks({
-        taskId,
-        workspaceId,
-        subtasks: updatedSubtasks,
-      }).unwrap();
-
-      toast.success("Subtask deleted successfully");
-    } catch (error) {
-      // Revert the optimistic update on error
-      setTask(taskData);
-      //console.error('Error deleting subtask:', error);
-      toast.error(error?.data?.message || "Failed to delete subtask");
-    }
-  };
-
-  // Update the status change handler in the JSX
-  const handleSubtaskStatusChange = async (subtaskId, newStatus) => {
-    try {
-      const updatedSubtasks = task.subtasks.map((st) =>
-        st._id === subtaskId ? { ...st, status: newStatus } : st,
-      );
-
-      // First update the local state optimistically
-      setTask((prev) => ({ ...prev, subtasks: updatedSubtasks }));
-
-      // Then send the update to the server
-      await updateTaskSubtasks({
-        taskId,
-        workspaceId,
-        subtasks: updatedSubtasks,
-      }).unwrap();
-
-      toast.success(`Subtask status updated to ${newStatus}`);
-    } catch (error) {
-      // Revert the optimistic update on error
-      setTask(taskData);
-      toast.error("Failed to update subtask status");
-    }
-  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -824,19 +811,11 @@ const TaskDetails = () => {
                                 : "border-gray-300 dark:border-gray-600"
                             }`}
                           >
-                            {subtask.status === "completed" && (
-                              <FaCheck
-                                className={`w-3 h-3 ${
-                                  updatingSubtaskIds.has(subtask._id)
-                                    ? "text-white/70"
-                                    : "text-white"
-                                }`}
-                              />
-                            )}
-                            {updatingSubtaskIds.has(subtask._id) &&
-                              subtask.status !== "completed" && (
-                                <div className="w-3 h-3 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
-                              )}
+                            {updatingSubtaskIds.has(subtask._id) ? (
+                              <div className="w-3 h-3 border-2 border-white dark:border-gray-300 border-t-transparent rounded-full animate-spin" />
+                            ) : subtask.status === "completed" ? (
+                              <FaCheck className="w-3 h-3 text-white" />
+                            ) : null}
                           </button>
 
                           {/* Actions */}

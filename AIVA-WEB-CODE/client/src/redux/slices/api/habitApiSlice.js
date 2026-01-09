@@ -92,7 +92,7 @@ export const habitApiSlice = createApi({
         method: "POST",
         body: { date, note },
       }),
-      async onQueryStarted({ id, date, note }, { dispatch, queryFulfilled }) {
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         try {
           const result = await queryFulfilled;
           const response = result.data;

@@ -11,7 +11,7 @@
 | *=================================================================
 | * Copyright (c) 2025 Mohitraj Jadeja. All rights reserved.
 | *=================================================================*/
-// eslint-disable-next-line no-unused-vars
+ 
 import React from "react";
 import { useParams } from "react-router-dom";
 import Notes from "../components/notes/Notes";

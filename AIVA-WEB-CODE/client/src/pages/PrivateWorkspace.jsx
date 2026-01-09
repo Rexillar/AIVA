@@ -10,7 +10,6 @@
  *=================================================================
  * Copyright (c) 2024 Mohitraj Jadeja. All rights reserved.
  *=================================================================*/
-import React from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useGetDashboardStatsQuery } from "../redux/slices/api/taskApiSlice";
 import {

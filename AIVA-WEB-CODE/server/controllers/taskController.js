@@ -867,6 +867,711 @@ const getTaskComments = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc    Complete task
+// @route   PUT /api/tasks/:id/complete
+// @access  Private
+const completeTask = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { workspaceId } = req.body;
+
+  const task = await Task.findOne({ _id: id, workspace: workspaceId });
+
+  if (!task) {
+    res.status(404);
+    throw new Error('Task not found');
+  }
+
+  task.stage = 'completed';
+  task.completedAt = new Date();
+  await task.save();
+
+  // Award XP for task completion
+  try {
+    await GamificationService.awardXP(
+      req.user._id,
+      'task_completed',
+      { taskId: task._id }
+    );
+  } catch (error) {
+    console.error('Gamification error:', error);
+  }
+
+  res.status(200).json({
+    success: true,
+    message: 'Task completed successfully',
+    data: task
+  });
+});
+
+// @desc    Reopen completed task
+// @route   PUT /api/tasks/:id/reopen
+// @access  Private
+const reopenTask = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { workspaceId } = req.body;
+
+  const task = await Task.findOne({ _id: id, workspace: workspaceId });
+
+  if (!task) {
+    res.status(404);
+    throw new Error('Task not found');
+  }
+
+  task.stage = 'todo';
+  task.completedAt = null;
+  await task.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Task reopened successfully',
+    data: task
+  });
+});
+
+// @desc    Get today's tasks
+// @route   GET /api/tasks/today
+// @access  Private
+const getTodayTasks = asyncHandler(async (req, res) => {
+  const { workspaceId } = req.query;
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const tasks = await Task.find({
+    workspace: workspaceId,
+    dueDate: {
+      $gte: today,
+      $lt: tomorrow
+    },
+    isDeleted: { $ne: true }
+  })
+    .populate('assignees', 'name email avatar')
+    .populate('creator', 'name email avatar')
+    .sort({ dueDate: 1 });
+
+  res.status(200).json({
+    success: true,
+    count: tasks.length,
+    data: tasks
+  });
+});
+
+// @desc    Get overdue tasks
+// @route   GET /api/tasks/overdue
+// @access  Private
+const getOverdueTasks = asyncHandler(async (req, res) => {
+  const { workspaceId } = req.query;
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const now = new Date();
+
+  const tasks = await Task.find({
+    workspace: workspaceId,
+    dueDate: { $lt: now },
+    stage: { $ne: 'completed' },
+    isDeleted: { $ne: true }
+  })
+    .populate('assignees', 'name email avatar')
+    .populate('creator', 'name email avatar')
+    .sort({ dueDate: 1 });
+
+  res.status(200).json({
+    success: true,
+    count: tasks.length,
+    data: tasks
+  });
+});
+
+// @desc    Get completed tasks
+// @route   GET /api/tasks/completed
+// @access  Private
+const getCompletedTasks = asyncHandler(async (req, res) => {
+  const { workspaceId } = req.query;
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const tasks = await Task.find({
+    workspace: workspaceId,
+    stage: 'completed',
+    isDeleted: { $ne: true }
+  })
+    .populate('assignees', 'name email avatar')
+    .populate('creator', 'name email avatar')
+    .sort({ completedAt: -1 });
+
+  res.status(200).json({
+    success: true,
+    count: tasks.length,
+    data: tasks
+  });
+});
+
+// @desc    Complete multiple tasks by name
+// @route   POST /api/tasks/batch/complete-by-name
+// @access  Private
+const completeTasksByName = asyncHandler(async (req, res) => {
+  const { taskNames, workspaceId } = req.body;
+
+  if (!taskNames || !Array.isArray(taskNames) || taskNames.length === 0) {
+    res.status(400);
+    throw new Error('Task names array is required');
+  }
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const tasks = await Task.find({
+    workspace: workspaceId,
+    title: { $in: taskNames },
+    stage: { $ne: 'completed' },
+    isDeleted: { $ne: true }
+  });
+
+  const completedTasks = [];
+  for (const task of tasks) {
+    task.stage = 'completed';
+    task.completedAt = new Date();
+    await task.save();
+    completedTasks.push(task);
+
+    // Award XP
+    try {
+      await GamificationService.awardXP(
+        req.user._id,
+        'task_completed',
+        { taskId: task._id }
+      );
+    } catch (error) {
+      console.error('Gamification error:', error);
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    message: `Completed ${completedTasks.length} task(s)`,
+    data: completedTasks
+  });
+});
+
+// @desc    Complete all tasks due today
+// @route   POST /api/tasks/batch/complete-today
+// @access  Private
+const completeAllTasksDueToday = asyncHandler(async (req, res) => {
+  const { workspaceId } = req.body;
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const tasks = await Task.find({
+    workspace: workspaceId,
+    dueDate: {
+      $gte: today,
+      $lt: tomorrow
+    },
+    stage: { $ne: 'completed' },
+    isDeleted: { $ne: true }
+  });
+
+  for (const task of tasks) {
+    task.stage = 'completed';
+    task.completedAt = new Date();
+    await task.save();
+
+    // Award XP
+    try {
+      await GamificationService.awardXP(
+        req.user._id,
+        'task_completed',
+        { taskId: task._id }
+      );
+    } catch (error) {
+      console.error('Gamification error:', error);
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    message: `Completed ${tasks.length} task(s) due today`,
+    count: tasks.length,
+    data: tasks
+  });
+});
+
+// @desc    Complete all overdue tasks
+// @route   POST /api/tasks/batch/complete-overdue
+// @access  Private
+const completeAllOverdueTasks = asyncHandler(async (req, res) => {
+  const { workspaceId } = req.body;
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const now = new Date();
+
+  const tasks = await Task.find({
+    workspace: workspaceId,
+    dueDate: { $lt: now },
+    stage: { $ne: 'completed' },
+    isDeleted: { $ne: true }
+  });
+
+  for (const task of tasks) {
+    task.stage = 'completed';
+    task.completedAt = new Date();
+    await task.save();
+
+    // Award XP
+    try {
+      await GamificationService.awardXP(
+        req.user._id,
+        'task_completed',
+        { taskId: task._id }
+      );
+    } catch (error) {
+      console.error('Gamification error:', error);
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    message: `Completed ${tasks.length} overdue task(s)`,
+    count: tasks.length,
+    data: tasks
+  });
+});
+
+// @desc    Delete multiple tasks
+// @route   POST /api/tasks/batch/delete
+// @access  Private
+const deleteMultipleTasks = asyncHandler(async (req, res) => {
+  const { taskIds, workspaceId } = req.body;
+
+  if (!taskIds || !Array.isArray(taskIds) || taskIds.length === 0) {
+    res.status(400);
+    throw new Error('Task IDs array is required');
+  }
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const result = await Task.deleteMany({
+    _id: { $in: taskIds },
+    workspace: workspaceId
+  });
+
+  res.status(200).json({
+    success: true,
+    message: `Deleted ${result.deletedCount} task(s)`,
+    count: result.deletedCount
+  });
+});
+
+// @desc    Delete all completed tasks
+// @route   DELETE /api/tasks/batch/delete-completed
+// @access  Private
+const deleteAllCompletedTasks = asyncHandler(async (req, res) => {
+  const { workspaceId } = req.query;
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const result = await Task.deleteMany({
+    workspace: workspaceId,
+    stage: 'completed'
+  });
+
+  res.status(200).json({
+    success: true,
+    message: `Deleted ${result.deletedCount} completed task(s)`,
+    count: result.deletedCount
+  });
+});
+
+// @desc    Delete all tasks in workspace
+// @route   DELETE /api/tasks/batch/delete-all
+// @access  Private
+const deleteAllTasksInWorkspace = asyncHandler(async (req, res) => {
+  const { workspaceId } = req.query;
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const result = await Task.deleteMany({
+    workspace: workspaceId
+  });
+
+  res.status(200).json({
+    success: true,
+    message: `Deleted ${result.deletedCount} task(s) from workspace`,
+    count: result.deletedCount
+  });
+});
+
+// @desc    Create multiple subtasks under task
+// @route   POST /api/tasks/:id/subtasks/batch
+// @access  Private
+const createMultipleSubtasks = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { subtasks, workspaceId } = req.body;
+
+  if (!subtasks || !Array.isArray(subtasks) || subtasks.length === 0) {
+    res.status(400);
+    throw new Error('Subtasks array is required');
+  }
+
+  const task = await Task.findOne({ _id: id, workspace: workspaceId });
+
+  if (!task) {
+    res.status(404);
+    throw new Error('Task not found');
+  }
+
+  const createdSubtasks = [];
+  for (const subtaskData of subtasks) {
+    const subtask = {
+      title: subtaskData.title || subtaskData,
+      completed: false,
+      createdAt: new Date()
+    };
+    task.subtasks.push(subtask);
+    createdSubtasks.push(subtask);
+  }
+
+  await task.save();
+
+  res.status(201).json({
+    success: true,
+    message: `Created ${createdSubtasks.length} subtask(s)`,
+    data: createdSubtasks
+  });
+});
+
+// @desc    Complete all subtasks of task
+// @route   PUT /api/tasks/:id/subtasks/complete-all
+// @access  Private
+const completeAllSubtasks = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { workspaceId } = req.body;
+
+  const task = await Task.findOne({ _id: id, workspace: workspaceId });
+
+  if (!task) {
+    res.status(404);
+    throw new Error('Task not found');
+  }
+
+  let completedCount = 0;
+  task.subtasks.forEach(subtask => {
+    if (!subtask.completed) {
+      subtask.completed = true;
+      subtask.completedAt = new Date();
+      completedCount++;
+    }
+  });
+
+  await task.save();
+
+  res.status(200).json({
+    success: true,
+    message: `Completed ${completedCount} subtask(s)`,
+    data: task.subtasks
+  });
+});
+
+// @desc    Delete all subtasks of task
+// @route   DELETE /api/tasks/:id/subtasks/all
+// @access  Private
+const deleteAllSubtasks = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { workspaceId } = req.query;
+
+  const task = await Task.findOne({ _id: id, workspace: workspaceId });
+
+  if (!task) {
+    res.status(404);
+    throw new Error('Task not found');
+  }
+
+  const deletedCount = task.subtasks.length;
+  task.subtasks = [];
+  await task.save();
+
+  res.status(200).json({
+    success: true,
+    message: `Deleted ${deletedCount} subtask(s)`,
+    count: deletedCount
+  });
+});
+
+// @desc    Search tasks by keyword
+// @route   GET /api/tasks/search
+// @access  Private
+const searchTasks = asyncHandler(async (req, res) => {
+  const { workspaceId, keyword } = req.query;
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  if (!keyword) {
+    res.status(400);
+    throw new Error('Search keyword is required');
+  }
+
+  const tasks = await Task.find({
+    workspace: workspaceId,
+    $or: [
+      { title: { $regex: keyword, $options: 'i' } },
+      { description: { $regex: keyword, $options: 'i' } }
+    ],
+    isDeleted: { $ne: true }
+  })
+    .populate('assignees', 'name email avatar')
+    .populate('creator', 'name email avatar')
+    .sort({ createdAt: -1 });
+
+  res.status(200).json({
+    success: true,
+    count: tasks.length,
+    data: tasks
+  });
+});
+
+// @desc    Move task to different workspace
+// @route   PUT /api/tasks/:id/move
+// @access  Private
+const moveTaskToWorkspace = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { targetWorkspaceId, currentWorkspaceId } = req.body;
+
+  if (!targetWorkspaceId || !currentWorkspaceId) {
+    res.status(400);
+    throw new Error('Both target and current workspace IDs are required');
+  }
+
+  const task = await Task.findOne({ _id: id, workspace: currentWorkspaceId });
+
+  if (!task) {
+    res.status(404);
+    throw new Error('Task not found');
+  }
+
+  // Verify access to target workspace
+  const targetWorkspace = await Workspace.findById(targetWorkspaceId);
+  if (!targetWorkspace) {
+    res.status(404);
+    throw new Error('Target workspace not found');
+  }
+
+  const isMember = targetWorkspace.members.some(
+    member => member.user.toString() === req.user._id.toString()
+  );
+
+  if (!isMember && targetWorkspace.owner.toString() !== req.user._id.toString()) {
+    res.status(403);
+    throw new Error('Not authorized to move task to target workspace');
+  }
+
+  task.workspace = targetWorkspaceId;
+  await task.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Task moved successfully',
+    data: task
+  });
+});
+
+// @desc    Rename task
+// @route   PUT /api/tasks/:id/rename
+// @access  Private
+const renameTask = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { newTitle, workspaceId } = req.body;
+
+  if (!newTitle || !newTitle.trim()) {
+    res.status(400);
+    throw new Error('New title is required');
+  }
+
+  const task = await Task.findOne({ _id: id, workspace: workspaceId });
+
+  if (!task) {
+    res.status(404);
+    throw new Error('Task not found');
+  }
+
+  task.title = newTitle.trim();
+  await task.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Task renamed successfully',
+    data: task
+  });
+});
+
+// @desc    Update task due date
+// @route   PUT /api/tasks/:id/due-date
+// @access  Private
+const updateTaskDueDate = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { dueDate, workspaceId } = req.body;
+
+  if (!dueDate) {
+    res.status(400);
+    throw new Error('Due date is required');
+  }
+
+  const task = await Task.findOne({ _id: id, workspace: workspaceId });
+
+  if (!task) {
+    res.status(404);
+    throw new Error('Task not found');
+  }
+
+  task.dueDate = new Date(dueDate);
+  await task.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Task due date updated successfully',
+    data: task
+  });
+});
+
+// @desc    Complete all tasks (HIGH RISK)
+// @route   POST /api/tasks/batch/complete-all
+// @access  Private
+const completeAllTasks = asyncHandler(async (req, res) => {
+  const { workspaceId } = req.body;
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const tasks = await Task.find({
+    workspace: workspaceId,
+    stage: { $ne: 'completed' },
+    isDeleted: { $ne: true }
+  });
+
+  for (const task of tasks) {
+    task.stage = 'completed';
+    task.completedAt = new Date();
+    await task.save();
+
+    // Award XP
+    try {
+      await GamificationService.awardXP(
+        req.user._id,
+        'task_completed',
+        { taskId: task._id }
+      );
+    } catch (error) {
+      console.error('Gamification error:', error);
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    message: `Completed all ${tasks.length} task(s)`,
+    count: tasks.length,
+    data: tasks
+  });
+});
+
+// @desc    Archive all completed tasks
+// @route   POST /api/tasks/batch/archive-completed
+// @access  Private
+const archiveCompletedTasks = asyncHandler(async (req, res) => {
+  const { workspaceId } = req.body;
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const result = await Task.updateMany(
+    {
+      workspace: workspaceId,
+      stage: 'completed',
+      isArchived: { $ne: true }
+    },
+    {
+      $set: { isArchived: true, archivedAt: new Date() }
+    }
+  );
+
+  res.status(200).json({
+    success: true,
+    message: `Archived ${result.modifiedCount} completed task(s)`,
+    count: result.modifiedCount
+  });
+});
+
+// @desc    Restore all archived tasks
+// @route   POST /api/tasks/batch/restore-archived
+// @access  Private
+const restoreArchivedTasks = asyncHandler(async (req, res) => {
+  const { workspaceId } = req.body;
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const result = await Task.updateMany(
+    {
+      workspace: workspaceId,
+      isArchived: true
+    },
+    {
+      $set: { isArchived: false },
+      $unset: { archivedAt: 1 }
+    }
+  );
+
+  res.status(200).json({
+    success: true,
+    message: `Restored ${result.modifiedCount} archived task(s)`,
+    count: result.modifiedCount
+  });
+});
+
 // Export all functions
 export {
   createTask,
@@ -888,5 +1593,27 @@ export {
   createTaskAssignmentNotifications,
   completeSubtask,
   addTaskComment,
-  getTaskComments
+  getTaskComments,
+  // New exports
+  completeTask,
+  reopenTask,
+  getTodayTasks,
+  getOverdueTasks,
+  getCompletedTasks,
+  completeTasksByName,
+  completeAllTasksDueToday,
+  completeAllOverdueTasks,
+  deleteMultipleTasks,
+  deleteAllCompletedTasks,
+  deleteAllTasksInWorkspace,
+  createMultipleSubtasks,
+  completeAllSubtasks,
+  deleteAllSubtasks,
+  searchTasks,
+  moveTaskToWorkspace,
+  renameTask,
+  updateTaskDueDate,
+  completeAllTasks,
+  archiveCompletedTasks,
+  restoreArchivedTasks
 };

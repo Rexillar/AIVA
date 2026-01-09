@@ -10,7 +10,7 @@
  *=================================================================
  * Copyright (c) 2024 Mohitraj Jadeja. All rights reserved.
  *=================================================================*/
-// eslint-disable-next-line no-unused-vars
+ 
 import React, { useState, useEffect, useCallback } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -124,7 +124,7 @@ const NoteEditor = ({ note, workspaceId }) => {
     }
   }, [note, editor, lastSavedNoteId]);
 
-  const debouncedSave = useCallback(
+  const debouncedSave = useCallback( // eslint-disable-line react-hooks/exhaustive-deps
     debounce(async (updates) => {
       if (!note?._id || !workspaceId) {
         console.warn("Cannot save: missing note ID or workspace ID");

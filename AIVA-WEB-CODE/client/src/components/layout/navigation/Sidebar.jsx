@@ -65,9 +65,9 @@ const WorkspaceSection = ({
           className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-400 transition-transform duration-200 ease-in-out transform hover:scale-110"
         >
           {isOpen ? (
-            <FaChevronUp className="w-3.5 h-3.5" />
-          ) : (
             <FaChevronDown className="w-3.5 h-3.5" />
+          ) : (
+            <FaChevronRight className="w-3.5 h-3.5" />
           )}
         </button>
       </div>
@@ -157,9 +157,9 @@ const WorkspaceButton = ({
           className="mr-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-transform duration-200"
         >
           {isExpanded ? (
-            <FaChevronDown className="w-3 h-3" />
-          ) : (
             <FaChevronUp className="w-3 h-3" />
+          ) : (
+            <FaChevronDown className="w-3 h-3" />
           )}
         </button>
 

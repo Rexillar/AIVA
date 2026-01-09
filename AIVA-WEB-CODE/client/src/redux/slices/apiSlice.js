@@ -12,7 +12,6 @@
  *=================================================================*/
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 import { toast } from "sonner";
-import { logout } from "./authSlice";
 
 // Get the API URL from environment variables
 const API_URL = import.meta.env.VITE_APP_API_URL || "";

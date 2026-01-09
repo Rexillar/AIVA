@@ -1,4 +1,16 @@
-# AIVA Web Application Documentation
+# 📚 AIVA Documentation
+
+> **Complete guide to understanding, building, and deploying AIVA**
+
+---
+
+## 🚀 Quick Start
+
+**New here?** Start with **[00_START_HERE.md](00_START_HERE.md)** for guided learning paths.
+
+**Need quick answers?** Check **[01_QUICK_REFERENCE.md](01_QUICK_REFERENCE.md)** for commands and API reference.
+
+---
 
 ## Overview
 

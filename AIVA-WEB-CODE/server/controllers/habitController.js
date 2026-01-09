@@ -421,58 +421,6 @@ export const getUserHabitAnalytics = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc    Archive/Unarchive habit
-// @route   PATCH /api/habits/:id/archive
-// @access  Private
-export const archiveHabit = asyncHandler(async (req, res) => {
-  const habit = await Habit.findById(req.params.id);
-  
-  if (!habit) {
-    res.status(404);
-    throw new Error('Habit not found');
-  }
-  
-  if (habit.user.toString() !== req.user._id.toString()) {
-    res.status(403);
-    throw new Error('Not authorized to archive this habit');
-  }
-  
-  habit.isArchived = !habit.isArchived;
-  await habit.save();
-  
-  res.status(200).json({
-    success: true,
-    message: `Habit ${habit.isArchived ? 'archived' : 'unarchived'} successfully`,
-    data: habit
-  });
-});
-
-// @desc    Pause/Resume habit
-// @route   PATCH /api/habits/:id/pause
-// @access  Private
-export const pauseHabit = asyncHandler(async (req, res) => {
-  const habit = await Habit.findById(req.params.id);
-  
-  if (!habit) {
-    res.status(404);
-    throw new Error('Habit not found');
-  }
-  
-  if (habit.user.toString() !== req.user._id.toString()) {
-    res.status(403);
-    throw new Error('Not authorized to modify this habit');
-  }
-  
-  habit.isPaused = !habit.isPaused;
-  await habit.save();
-  
-  res.status(200).json({
-    success: true,
-    message: `Habit ${habit.isPaused ? 'paused' : 'resumed'} successfully`,
-    data: habit
-  });
-});
-
 // @desc    Delete habit
 // @route   DELETE /api/habits/:id
 // @access  Private
@@ -618,4 +566,311 @@ export const getHabitHistory = asyncHandler(async (req, res) => {
 export const getHabits = asyncHandler(async (req, res) => {
   const habits = await Habit.find({ workspace: req.query.workspaceId, user: req.user._id });
   res.json(habits);
+});
+
+// @desc    Complete today's habit
+// @route   POST /api/habits/:id/complete-today
+// @access  Private
+export const completeTodayHabit = asyncHandler(async (req, res) => {
+  const { note } = req.body;
+  
+  const habit = await Habit.findById(req.params.id);
+  
+  if (!habit) {
+    res.status(404);
+    throw new Error('Habit not found');
+  }
+  
+  // Verify workspace access
+  const workspace = await Workspace.findById(habit.workspace);
+  const isMember = workspace.members.some(
+    member => member.user.toString() === req.user._id.toString()
+  );
+  
+  if (!isMember) {
+    res.status(403);
+    throw new Error('Not authorized to access this habit');
+  }
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  habit.toggleCompletion(today, note);
+  await habit.save();
+  
+  // Award XP if habit was just completed
+  if (habit.isCompletedToday) {
+    try {
+      await GamificationService.awardXP(
+        req.user._id,
+        'habit_completed',
+        { habitId: habit._id, streak: habit.currentStreak }
+      );
+    } catch (error) {
+      console.error('Gamification error:', error);
+    }
+  }
+  
+  res.status(200).json({
+    success: true,
+    message: habit.isCompletedToday ? 'Habit completed for today' : 'Habit completion removed',
+    data: habit
+  });
+});
+
+// @desc    Complete multiple habits today
+// @route   POST /api/habits/batch/complete-today
+// @access  Private
+export const completeMultipleHabitsToday = asyncHandler(async (req, res) => {
+  const { habitIds, workspaceId } = req.body;
+  
+  if (!habitIds || !Array.isArray(habitIds) || habitIds.length === 0) {
+    res.status(400);
+    throw new Error('Habit IDs array is required');
+  }
+  
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+  
+  const habits = await Habit.find({
+    _id: { $in: habitIds },
+    workspace: workspaceId
+  });
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const completedHabits = [];
+  for (const habit of habits) {
+    if (!habit.isCompletedToday) {
+      habit.toggleCompletion(today);
+      await habit.save();
+      completedHabits.push(habit);
+      
+      // Award XP
+      try {
+        await GamificationService.awardXP(
+          req.user._id,
+          'habit_completed',
+          { habitId: habit._id, streak: habit.currentStreak }
+        );
+      } catch (error) {
+        console.error('Gamification error:', error);
+      }
+    }
+  }
+  
+  res.status(200).json({
+    success: true,
+    message: `Completed ${completedHabits.length} habit(s) for today`,
+    count: completedHabits.length,
+    data: completedHabits
+  });
+});
+
+// @desc    Undo habit completion for today
+// @route   POST /api/habits/:id/undo-completion
+// @access  Private
+export const undoHabitCompletion = asyncHandler(async (req, res) => {
+  const habit = await Habit.findById(req.params.id);
+  
+  if (!habit) {
+    res.status(404);
+    throw new Error('Habit not found');
+  }
+  
+  // Verify workspace access
+  const workspace = await Workspace.findById(habit.workspace);
+  const isMember = workspace.members.some(
+    member => member.user.toString() === req.user._id.toString()
+  );
+  
+  if (!isMember) {
+    res.status(403);
+    throw new Error('Not authorized to access this habit');
+  }
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  // Remove today's completion
+  habit.completions = habit.completions.filter(c => {
+    const cDate = new Date(c.date);
+    cDate.setHours(0, 0, 0, 0);
+    return cDate.getTime() !== today.getTime();
+  });
+  
+  habit.recalculateStreaks();
+  await habit.save();
+  
+  res.status(200).json({
+    success: true,
+    message: 'Habit completion undone for today',
+    data: habit
+  });
+});
+
+// @desc    Pause habit
+// @route   PUT /api/habits/:id/pause
+// @access  Private
+export const pauseHabit = asyncHandler(async (req, res) => {
+  const habit = await Habit.findById(req.params.id);
+  
+  if (!habit) {
+    res.status(404);
+    throw new Error('Habit not found');
+  }
+  
+  if (habit.user.toString() !== req.user._id.toString()) {
+    res.status(403);
+    throw new Error('Not authorized to pause this habit');
+  }
+  
+  habit.isActive = false;
+  habit.pausedAt = new Date();
+  await habit.save();
+  
+  res.status(200).json({
+    success: true,
+    message: 'Habit paused successfully',
+    data: habit
+  });
+});
+
+// @desc    Resume habit
+// @route   PUT /api/habits/:id/resume
+// @access  Private
+export const resumeHabit = asyncHandler(async (req, res) => {
+  const habit = await Habit.findById(req.params.id);
+  
+  if (!habit) {
+    res.status(404);
+    throw new Error('Habit not found');
+  }
+  
+  if (habit.user.toString() !== req.user._id.toString()) {
+    res.status(403);
+    throw new Error('Not authorized to resume this habit');
+  }
+  
+  habit.isActive = true;
+  habit.pausedAt = null;
+  await habit.save();
+  
+  res.status(200).json({
+    success: true,
+    message: 'Habit resumed successfully',
+    data: habit
+  });
+});
+
+// @desc    Pause multiple habits
+// @route   POST /api/habits/batch/pause
+// @access  Private
+export const pauseMultipleHabits = asyncHandler(async (req, res) => {
+  const { habitIds, workspaceId } = req.body;
+  
+  if (!habitIds || !Array.isArray(habitIds) || habitIds.length === 0) {
+    res.status(400);
+    throw new Error('Habit IDs array is required');
+  }
+  
+  const result = await Habit.updateMany(
+    {
+      _id: { $in: habitIds },
+      workspace: workspaceId,
+      user: req.user._id
+    },
+    {
+      $set: { isActive: false, pausedAt: new Date() }
+    }
+  );
+  
+  res.status(200).json({
+    success: true,
+    message: `Paused ${result.modifiedCount} habit(s)`,
+    count: result.modifiedCount
+  });
+});
+
+// @desc    Archive habit
+// @route   PUT /api/habits/:id/archive
+// @access  Private
+export const archiveHabit = asyncHandler(async (req, res) => {
+  const habit = await Habit.findById(req.params.id);
+  
+  if (!habit) {
+    res.status(404);
+    throw new Error('Habit not found');
+  }
+  
+  if (habit.user.toString() !== req.user._id.toString()) {
+    res.status(403);
+    throw new Error('Not authorized to archive this habit');
+  }
+  
+  habit.isArchived = true;
+  habit.archivedAt = new Date();
+  await habit.save();
+  
+  res.status(200).json({
+    success: true,
+    message: 'Habit archived successfully',
+    data: habit
+  });
+});
+
+// @desc    Archive multiple habits
+// @route   POST /api/habits/batch/archive
+// @access  Private
+export const archiveMultipleHabits = asyncHandler(async (req, res) => {
+  const { habitIds, workspaceId } = req.body;
+  
+  if (!habitIds || !Array.isArray(habitIds) || habitIds.length === 0) {
+    res.status(400);
+    throw new Error('Habit IDs array is required');
+  }
+  
+  const result = await Habit.updateMany(
+    {
+      _id: { $in: habitIds },
+      workspace: workspaceId,
+      user: req.user._id
+    },
+    {
+      $set: { isArchived: true, archivedAt: new Date() }
+    }
+  );
+  
+  res.status(200).json({
+    success: true,
+    message: `Archived ${result.modifiedCount} habit(s)`,
+    count: result.modifiedCount
+  });
+});
+
+// @desc    Delete multiple habits
+// @route   POST /api/habits/batch/delete
+// @access  Private
+export const deleteMultipleHabits = asyncHandler(async (req, res) => {
+  const { habitIds, workspaceId } = req.body;
+  
+  if (!habitIds || !Array.isArray(habitIds) || habitIds.length === 0) {
+    res.status(400);
+    throw new Error('Habit IDs array is required');
+  }
+  
+  const result = await Habit.deleteMany({
+    _id: { $in: habitIds },
+    workspace: workspaceId,
+    user: req.user._id
+  });
+  
+  res.status(200).json({
+    success: true,
+    message: `Deleted ${result.deletedCount} habit(s)`,
+    count: result.deletedCount
+  });
 });

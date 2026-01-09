@@ -24,7 +24,7 @@ const PUBLIC_ROUTES = [
   "/reset-password",
 ];
 
-export const useWorkspace = () => {
+export const useWorkspace = () => { // eslint-disable-line react-refresh/only-export-components
   const context = useContext(WorkspaceContext);
   if (!context) {
     throw new Error("useWorkspace must be used within a WorkspaceProvider");

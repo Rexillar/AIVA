@@ -11,10 +11,10 @@
  * Copyright (c) 2024 Mohitraj Jadeja. All rights reserved.
  *=================================================================*/
 
-/* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useRef } from "react";
-/* eslint-enable no-unused-vars */
+ 
 import { useWorkspace } from "../workspace/provider/WorkspaceProvider";
+import { useDispatch, useSelector } from "react-redux";
 import {
   useSendMessageMutation,
   useGetChatHistoryQuery,
@@ -32,7 +32,11 @@ import {
   useUpdateWorkspaceMutation,
   useDeleteWorkspaceMutation,
 } from "../../redux/slices/api/workspaceApiSlice";
-import { useGetTasksQuery } from "../../redux/slices/api/taskApiSlice";
+import {
+  useGetTasksQuery,
+  useDeleteTaskMutation,
+  useGetWorkspaceTasksQuery
+} from "../../redux/slices/api/taskApiSlice";
 import { useGetWorkspaceNotesQuery } from "../../redux/slices/api/noteApiSlice";
 import {
   FaRobot,
@@ -42,9 +46,23 @@ import {
   FaTasks,
   FaFire,
 } from "react-icons/fa";
+import { ConfirmationDialog } from "./ConfirmationDialog";
+import {
+  openConfirmationDialog,
+  closeConfirmationDialog,
+  setDialogLoading,
+  selectIsDialogOpen,
+  selectDialogTitle,
+  selectDialogMessage,
+  selectDialogOptions,
+  selectDialogContext,
+  selectDialogLoading,
+} from "../../redux/slices/ambiguityDialogSlice";
+import { getAmbiguityManager } from "../../services/ambiguityStateManager";
 
 export const Chatbot = () => {
   const { workspace } = useWorkspace();
+  const dispatch = useDispatch();
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [chat, setChat] = useState([]);
@@ -56,11 +74,21 @@ export const Chatbot = () => {
   const [slashCommand, setSlashCommand] = useState(null);
   const [filteredItems, setFilteredItems] = useState([]);
   const [selectedWorkspaceForCommand, setSelectedWorkspaceForCommand] =
-    useState(null); // eslint-disable-line no-unused-vars
+    useState(null);  
   const [commandStep, setCommandStep] = useState("command"); // 'command', 'workspace', 'entity'
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
-  const dropdownRef = useRef(null); // eslint-disable-line no-unused-vars
+  const dropdownRef = useRef(null);
+  
+  // Ambiguity dialog state from Redux
+  const isDialogOpen = useSelector(selectIsDialogOpen);
+  const dialogTitle = useSelector(selectDialogTitle);
+  const dialogMessage = useSelector(selectDialogMessage);
+  const dialogOptions = useSelector(selectDialogOptions);
+  const dialogContext = useSelector(selectDialogContext);
+  const dialogLoading = useSelector(selectDialogLoading);
+  
+  const ambiguityManager = getAmbiguityManager();  
 
   const { data: habits = [] } = useGetHabitsQuery(
     { workspaceId: workspace?._id },
@@ -74,6 +102,18 @@ export const Chatbot = () => {
   const [createWorkspace] = useCreateWorkspaceMutation();
   const [updateWorkspace] = useUpdateWorkspaceMutation();
   const [deleteWorkspace] = useDeleteWorkspaceMutation();
+  
+  const [deleteTask] = useDeleteTaskMutation();
+  
+  // Get all tasks for current workspace
+  const { data: workspaceTasks } = useGetWorkspaceTasksQuery(
+    {
+      workspaceId: workspace?._id,
+      filter: 'active',
+      status: 'all'
+    },
+    { skip: !workspace?._id }
+  );
 
   const { data: chatHistory } = useGetChatHistoryQuery(workspace?._id, {
     skip: !workspace?._id,
@@ -298,6 +338,43 @@ export const Chatbot = () => {
       return `New habit '${habitName}' created! 🎉`;
     }
   };
+  
+  // Execute bulk delete of all tasks
+  const executeBulkDelete = async (workspaceId) => {
+    try {
+      const tasks = workspaceTasks?.tasks || [];
+      
+      if (tasks.length === 0) {
+        return "No tasks to delete.";
+      }
+      
+      let deletedCount = 0;
+      let failedCount = 0;
+      
+      // Delete all tasks one by one
+      for (const task of tasks) {
+        try {
+          await deleteTask({
+            taskId: task._id,
+            workspaceId: workspaceId
+          }).unwrap();
+          deletedCount++;
+        } catch (error) {
+          failedCount++;
+          console.error(`Failed to delete task ${task._id}:`, error);
+        }
+      }
+      
+      if (failedCount === 0) {
+        return `✅ Successfully deleted all ${deletedCount} tasks.`;
+      } else {
+        return `⚠️ Deleted ${deletedCount} tasks. ${failedCount} failed.`;
+      }
+    } catch (error) {
+      console.error('Bulk delete error:', error);
+      return "Error deleting tasks.";
+    }
+  };
 
   const executeAction = async (action) => {
     let result = "";
@@ -396,8 +473,95 @@ export const Chatbot = () => {
     return result;
   };
 
+  // Handle confirmation dialog option selection
+  const handleDialogOptionSelect = async (optionId) => {
+    dispatch(setDialogLoading(true));
+    
+    try {
+      const result = ambiguityManager.processSelection(optionId);
+      
+      if (!result.valid) {
+        setChat((prev) => [...prev, { role: "assistant", content: result.message }]);
+        dispatch(closeConfirmationDialog());
+        ambiguityManager.clearAmbiguityState();
+        return;
+      }
+      
+      const { selectedOption, context } = result;
+      
+      // Execute the action based on selected option
+      if (selectedOption.action) {
+        const actionResult = await executeAction(selectedOption.action);
+        setChat((prev) => [
+          ...prev,
+          { role: "assistant", content: `${selectedOption.label}: ${actionResult}` }
+        ]);
+      } else {
+        // Send the selection back to backend for processing
+        const followUpResult = await sendMessage({
+          message: selectedOption.label,
+          workspaceId: workspace?._id,
+          selectedOptionId: optionId,
+          contextData: context
+        }).unwrap();
+        
+        setChat((prev) => [
+          ...prev,
+          { role: "assistant", content: followUpResult.reply }
+        ]);
+      }
+      
+      // Clear state and close dialog
+      ambiguityManager.clearAmbiguityState();
+      dispatch(closeConfirmationDialog());
+      
+    } catch (error) {
+      setChat((prev) => [
+        ...prev,
+        { role: "assistant", content: "Error processing your selection." }
+      ]);
+      dispatch(closeConfirmationDialog());
+      ambiguityManager.clearAmbiguityState();
+    } finally {
+      dispatch(setDialogLoading(false));
+    }
+  };
+
+  // Handle confirmation dialog cancel
+  const handleDialogCancel = () => {
+    ambiguityManager.clearAmbiguityState();
+    dispatch(closeConfirmationDialog());
+    setChat((prev) => [
+      ...prev,
+      { role: "assistant", content: "Okay, let me know if you'd like to do something else!" }
+    ]);
+  };
+
   const handleSend = async (msg = message) => {
     if (!msg.trim()) return;
+    
+    // Check if we're in a locked ambiguity state
+    if (ambiguityManager.isLocked()) {
+      const result = ambiguityManager.processNaturalInput(msg);
+      
+      if (result.requiresDialog) {
+        // Input was ambiguous or doesn't match - keep dialog open
+        setChat((prev) => [
+          ...prev,
+          { role: "user", content: msg },
+          { role: "assistant", content: result.message }
+        ]);
+        setMessage("");
+        return;
+      }
+      
+      if (result.type === 'matched') {
+        // User typed something that clearly matches an option
+        await handleDialogOptionSelect(result.selectedOption.id);
+        return;
+      }
+    }
+    
     setIsSending(true);
     const userMsg = { role: "user", content: msg };
     setChat([...chat, userMsg]);
@@ -448,11 +612,37 @@ export const Chatbot = () => {
         message: msg,
         workspaceId: workspace?._id,
       }).unwrap();
-      const { action, reply } = result;
-      if (action) {
+      
+      const { action, reply, requiresExplicitChoice, choiceData, requiresExecution } = result;
+      
+      // Check if AI response requires explicit choice dialog
+      if (requiresExplicitChoice && choiceData) {
+        // Enter ambiguity state and show dialog
+        ambiguityManager.enterAmbiguityState(
+          choiceData.question,
+          choiceData.options,
+          { assistantMessage: reply, originalIntent: choiceData.intent }
+        );
+        
+        dispatch(openConfirmationDialog({
+          title: choiceData.title || "Please Choose",
+          message: choiceData.question,
+          options: choiceData.options,
+          context: { assistantMessage: reply }
+        }));
+        
+        setChat((prev) => [...prev, { role: "assistant", content: reply }]);
+      } else if (action) {
         if (action.requires_confirmation) {
           setPendingAction(action);
           setChat((prev) => [...prev, { role: "assistant", content: reply }]);
+        } else if (requiresExecution && action?.type === 'DELETE_ALL_TASKS') {
+          // Execute bulk delete
+          const actionResult = await executeBulkDelete(action.workspaceId);
+          setChat((prev) => [
+            ...prev,
+            { role: "assistant", content: actionResult },
+          ]);
         } else {
           const actionResult = await executeAction(action);
           setChat((prev) => [
@@ -471,6 +661,7 @@ export const Chatbot = () => {
           content: "Sorry, I encountered an error. Please try again.",
         },
       ]);
+      console.error('Chat error:', error);
     }
     setIsTyping(false);
     setIsSending(false);
@@ -521,6 +712,18 @@ What would you like to do?`,
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end space-y-2">
+      {/* Confirmation Dialog for Ambiguous Choices */}
+      <ConfirmationDialog
+        isOpen={isDialogOpen}
+        title={dialogTitle}
+        message={dialogMessage}
+        options={dialogOptions}
+        assistantMessage={dialogContext?.assistantMessage}
+        onSelect={handleDialogOptionSelect}
+        onCancel={handleDialogCancel}
+        loading={dialogLoading}
+      />
+      
       {/* Chat Window */}
       {isOpen && (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-80 h-96 flex flex-col animate-slideUp mb-2">

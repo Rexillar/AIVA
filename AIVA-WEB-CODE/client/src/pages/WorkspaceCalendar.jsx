@@ -10,7 +10,7 @@
  *=================================================================
  * Copyright (c) 2024 Mohitraj Jadeja. All rights reserved.
  *=================================================================*/
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -24,7 +24,7 @@ import {
   useUpdateTaskMutation,
 } from "../redux/slices/api/taskApiSlice";
 import { LoadingSpinner } from "../components/shared/feedback/LoadingSpinner";
-import { format, differenceInDays, isPast, addDays } from "date-fns";
+import { format, differenceInDays, isPast } from "date-fns";
 import {
   FaCalendarAlt,
   FaClock,

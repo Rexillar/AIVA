@@ -10,7 +10,7 @@
  *=================================================================
  * Copyright (c) 2024 Mohitraj Jadeja. All rights reserved.
  *=================================================================*/
-import React, { useState } from "react";
+import { useState } from "react";
 import { useWorkspace } from "../components/workspace/provider/WorkspaceProvider";
 import { Container } from "../components/shared/layout/Container";
 import { Card } from "../components/shared/layout/Card";

@@ -10,7 +10,7 @@
  *=================================================================
  * Copyright (c) 2024 Mohitraj Jadeja. All rights reserved.
  *=================================================================*/
-// eslint-disable-next-line no-unused-vars
+ 
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
 import { FaBars } from "react-icons/fa";

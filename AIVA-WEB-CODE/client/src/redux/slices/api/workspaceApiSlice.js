@@ -10,7 +10,6 @@
  *=================================================================
  * Copyright (c) 2024 Mohitraj Jadeja. All rights reserved.
  *=================================================================*/
-import React from "react";
 import { apiSlice } from "../../slices/apiSlice";
 import {
   setPrivateWorkspace,
@@ -22,7 +21,6 @@ import {
   setCurrentWorkspace,
   setWorkspaces,
   setWorkspaceError,
-  setLoading,
   clearCurrentWorkspace,
 } from "../workspaceSlice";
 import { toast } from "sonner";
@@ -682,7 +680,7 @@ export const workspaceApiSlice = apiSlice.injectEndpoints({
         method: "POST",
         body: { email, role, referralCode },
       }),
-      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+      async onQueryStarted(arg, { queryFulfilled }) {
         try {
           const { data } = await queryFulfilled;
           if (data?.status) {
@@ -736,7 +734,7 @@ export const workspaceApiSlice = apiSlice.injectEndpoints({
     getReferralLeaderboard: builder.query({
       query: () => `${WORKSPACE_URL}/invitations/leaderboard`,
       transformResponse: (response) => response?.data || [],
-      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+      async onQueryStarted(arg, { queryFulfilled }) {
         try {
           await queryFulfilled;
         } catch (error) {

@@ -10,7 +10,7 @@
  *=================================================================
  * Copyright (c) 2024 Mohitraj Jadeja. All rights reserved.
  *=================================================================*/
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useGetTasksQuery } from "../redux/slices/api/taskApiSlice";
 import { useGetWorkspaceQuery } from "../redux/slices/api/workspaceApiSlice";
@@ -43,7 +43,6 @@ ChartJS.register(
 const TaskPage = () => {
   const { workspaceId } = useParams();
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterPriority, setFilterPriority] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -202,12 +201,6 @@ const TaskPage = () => {
         },
       },
     },
-  };
-
-  const handleTaskCreated = () => {
-    refetch();
-    setIsAddTaskOpen(false);
-    setEditingTask(null);
   };
 
   const handleEditTask = (task) => {

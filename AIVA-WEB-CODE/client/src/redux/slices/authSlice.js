@@ -25,9 +25,6 @@ const getLocalStorageItem = (key) => {
 };
 
 // Get initial state from localStorage
-const user = getLocalStorageItem("user");
-const privateWorkspace = getLocalStorageItem("privateWorkspace");
-const publicWorkspaces = getLocalStorageItem("publicWorkspaces");
 
 const initialState = {
   user: getLocalStorageItem("user"),
@@ -171,9 +168,3 @@ export const selectUser = (state) => state.auth.user;
 export const selectIsAuthenticated = (state) => state.auth.isAuthenticated;
 export const selectPrivateWorkspace = (state) => state.auth.privateWorkspace;
 export const selectPublicWorkspaces = (state) => state.auth.publicWorkspaces;
-
-const loginUser = createAsyncThunk("auth/login", async (userData) => {
-  const response = await api.post("/auth/login", userData);
-  const taskData = response.data; // Assuming taskData is part of the response
-  return response.data; // Ensure this includes the token
-});

@@ -242,4 +242,149 @@ export const shareNote = asyncHandler(async (req, res) => {
     status: true,
     data: note
   });
-}); 
+});
+
+// @desc    List all notes with filters
+// @route   GET /api/notes/list
+// @access  Private
+export const listNotes = asyncHandler(async (req, res) => {
+  const { workspace, includeArchived = false } = req.query;
+  const userId = req.user._id;
+
+  if (!workspace) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const query = {
+    workspace,
+    $or: [
+      { isTrashed: false },
+      { isTrashed: { $exists: false } },
+      { isTrashed: null }
+    ]
+  };
+
+  if (!includeArchived || includeArchived === 'false') {
+    query.$and = [
+      {
+        $or: [
+          { isArchived: false },
+          { isArchived: { $exists: false } },
+          { isArchived: null }
+        ]
+      }
+    ];
+  }
+
+  const notes = await Note.find(query)
+    .populate('creator', 'name email avatar')
+    .sort({ updatedAt: -1 });
+
+  res.json({
+    status: true,
+    count: notes.length,
+    data: notes
+  });
+});
+
+// @desc    Search notes by keyword
+// @route   GET /api/notes/search
+// @access  Private
+export const searchNotes = asyncHandler(async (req, res) => {
+  const { workspace, keyword } = req.query;
+  const userId = req.user._id;
+
+  if (!workspace) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  if (!keyword) {
+    res.status(400);
+    throw new Error('Search keyword is required');
+  }
+
+  const notes = await Note.find({
+    workspace,
+    $or: [
+      { title: { $regex: keyword, $options: 'i' } },
+      { content: { $regex: keyword, $options: 'i' } }
+    ],
+    isTrashed: { $ne: true }
+  })
+    .populate('creator', 'name email avatar')
+    .sort({ updatedAt: -1 });
+
+  res.json({
+    status: true,
+    count: notes.length,
+    data: notes
+  });
+});
+
+// @desc    Delete multiple notes
+// @route   POST /api/notes/batch/delete
+// @access  Private
+export const deleteMultipleNotes = asyncHandler(async (req, res) => {
+  const { noteIds, workspaceId } = req.body;
+  const userId = req.user._id;
+
+  if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
+    res.status(400);
+    throw new Error('Note IDs array is required');
+  }
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const result = await Note.updateMany(
+    {
+      _id: { $in: noteIds },
+      workspace: workspaceId
+    },
+    {
+      $set: { 
+        isTrashed: true, 
+        trashedAt: new Date(),
+        trashedBy: userId
+      }
+    }
+  );
+
+  res.json({
+    status: true,
+    message: `Moved ${result.modifiedCount} note(s) to trash`,
+    count: result.modifiedCount
+  });
+});
+
+// @desc    Permanently delete multiple notes
+// @route   DELETE /api/notes/batch/delete-permanent
+// @access  Private
+export const permanentlyDeleteMultipleNotes = asyncHandler(async (req, res) => {
+  const { noteIds, workspaceId } = req.body;
+
+  if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
+    res.status(400);
+    throw new Error('Note IDs array is required');
+  }
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const result = await Note.deleteMany({
+    _id: { $in: noteIds },
+    workspace: workspaceId
+  });
+
+  res.json({
+    status: true,
+    message: `Permanently deleted ${result.deletedCount} note(s)`,
+    count: result.deletedCount
+  });
+});

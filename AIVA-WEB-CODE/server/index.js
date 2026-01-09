@@ -1,14 +1,22 @@
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+// Get current directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 // Load environment variables first - MUST be at the very top
-dotenv.config();
+const envPath = path.join(__dirname, '.env');
+console.log(`📄 Loading .env from: ${envPath}`);
+dotenv.config({ path: envPath });
+console.log(`🔑 GEMINI_API_KEY after load: ${process.env.GEMINI_API_KEY?.substring(0, 10)}...`);
 
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { createServer } from 'http';
+import { createServer} from 'http';
 import connectDB from './config/db.js';
 import { initializeGCS } from './config/gcs.js';
 import { initializeGridFS } from './services/mongoFileService.js';

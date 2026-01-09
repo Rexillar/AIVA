@@ -15,9 +15,6 @@ import { toast } from "sonner";
 import { fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 import { showRewards } from "../../slices/gamificationSlice";
 
-const TASK_URL = "/tasks";
-const TASKS_URL = "/tasks";
-
 // Simple toast functions with toast.dismiss()
 const notify = {
   success: (message, id) => {
@@ -53,63 +50,7 @@ const baseQuery = fetchBaseQuery({
   },
 });
 
-const baseQueryWithErrorHandling = async (args, api, extraOptions) => {
-  try {
-    const result = await baseQuery(args, api, extraOptions);
-
-    // If the request was successful, return it
-    if (result.data) {
-      return result;
-    }
-
-    // Handle errors
-    if (result.error) {
-      const isWorkspaceRelated =
-        typeof args === "string"
-          ? args.includes("workspace")
-          : args.url?.includes("workspace") || args.params?.workspaceId;
-
-      // For 404 workspace errors, return empty data structure
-      if (result.error.status === 404 && isWorkspaceRelated) {
-        return {
-          data: {
-            status: true,
-            tasks: [],
-            stats: {
-              total: 0,
-              todo: 0,
-              in_progress: 0,
-              review: 0,
-              completed: 0,
-              overdue: 0,
-              activeTasksCount: 0,
-              completionRate: 0,
-            },
-          },
-        };
-      }
-
-      // For other errors, return the error
-      return result;
-    }
-
-    return result;
-  } catch (err) {
-    // console.error('API request error:', err);
-    return {
-      error: {
-        status: 500,
-        data: {
-          message: err.message || "An unexpected error occurred",
-        },
-      },
-    };
-  }
-};
-
 // Validation helper functions
-const isValidObjectId = (id) => id && /^[0-9a-fA-F]{24}$/.test(id);
-
 const validateTaskId = (taskId) => {
   if (!taskId || typeof taskId !== "string" || !taskId.trim()) {
     throw new Error("Task ID must be a non-empty string");
@@ -122,16 +63,6 @@ const validateWorkspaceId = (workspaceId) => {
     throw new Error("Workspace ID must be a non-empty string");
   }
   return workspaceId.trim();
-};
-
-const validateId = (id, fieldName) => {
-  if (!id) {
-    throw new Error(`${fieldName} is required`);
-  }
-  if (typeof id !== "string" && typeof id !== "number") {
-    throw new Error(`${fieldName} must be a string or number`);
-  }
-  return id.toString();
 };
 
 export const taskApiSlice = apiSlice.injectEndpoints({
@@ -705,7 +636,7 @@ export const taskApiSlice = apiSlice.injectEndpoints({
           );
 
           // Wait for the actual response
-          const { data } = await queryFulfilled;
+          await queryFulfilled;
 
           // Update the trash count in dashboard stats
           dispatch(
@@ -772,7 +703,7 @@ export const taskApiSlice = apiSlice.injectEndpoints({
         { dispatch, queryFulfilled },
       ) {
         try {
-          const result = await queryFulfilled;
+          await queryFulfilled;
 
           // Only update cache if restoration was successful
           if (result?.data?.status) {

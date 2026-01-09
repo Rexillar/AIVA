@@ -10,7 +10,7 @@
  *=================================================================
  * Copyright (c) 2024 Mohitraj Jadeja. All rights reserved.
  *=================================================================*/
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   Link,
   useNavigate,
@@ -28,7 +28,7 @@ const ResetPassword = () => {
   const [searchParams] = useSearchParams();
 
   // Get email, token, and OTP from URL params or state
-  const [email, setEmail] = useState(() => {
+  const email = (() => {
     return (
       searchParams.get("email") ||
       location.state?.email ||

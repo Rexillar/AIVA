@@ -10,8 +10,8 @@
  *=================================================================
  * Copyright (c) 2024 Mohitraj Jadeja. All rights reserved.
  *=================================================================*/
-import React, { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   useRegisterMutation,
   useVerifyOTPMutation,
@@ -29,7 +29,6 @@ import { motion } from "framer-motion";
 
 const Register = () => {
   const [step, setStep] = useState(1);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -40,6 +39,7 @@ const Register = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -214,25 +214,6 @@ const Register = () => {
         }, 2000);
       }
       setIsSubmitting(false);
-    }
-  };
-
-  const handleResendOTP = async () => {
-    try {
-      const storedEmail = sessionStorage.getItem("registrationEmail");
-      if (!storedEmail) {
-        toast.error("Registration session expired. Please try again.");
-        setStep(1);
-        return;
-      }
-
-      const result = await resendOTP({ email: storedEmail }).unwrap();
-      if (result.status) {
-        toast.success("New verification code sent to your email!");
-        setFormData((prev) => ({ ...prev, otp: "" }));
-      }
-    } catch (err) {
-      toast.error(err.data?.message || "Failed to resend verification code.");
     }
   };
 

@@ -22,6 +22,7 @@ import habitReducer from "./slices/habitSlice";
 import taskApiSlice from "./slices/api/taskApiSlice";
 import { noteApiSlice } from "./slices/api/noteApiSlice";
 import { workspaceApiSlice } from "./slices/api/workspaceApiSlice";
+import ambiguityDialogReducer from "./slices/ambiguityDialogSlice";
 
 // Import other API slices to ensure endpoints are registered
 import "./slices/api/authApiSlice";
@@ -52,6 +53,7 @@ const store = configureStore({
     [chatApiSlice.reducerPath]: chatApiSlice.reducer,
     gamification: gamificationReducer,
     [gamificationApiSlice.reducerPath]: gamificationApiSlice.reducer,
+    ambiguityDialog: ambiguityDialogReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware()

@@ -22,7 +22,8 @@ export const STATE_TYPES = {
   AWAITING_TASK_DETAILS: 'awaiting_task_details',
   AWAITING_HABIT_DETAILS: 'awaiting_habit_details',
   AWAITING_CONFIRMATION: 'awaiting_confirmation',
-  AWAITING_CLARIFICATION: 'awaiting_clarification'
+  AWAITING_CLARIFICATION: 'awaiting_clarification',
+  AWAITING_EXPLICIT_CHOICE: 'awaiting_explicit_choice' // New: requires explicit dialog selection
 };
 
 /**
@@ -234,6 +235,62 @@ export const shouldUseState = async (userId, workspaceId) => {
   return !state.isIdle() && !state.isExpired();
 };
 
+/**
+ * Start explicit choice state (requires dialog selection)
+ */
+export const startExplicitChoice = async (userId, workspaceId, choiceData) => {
+  const state = await getConversationState(userId, workspaceId);
+  state.setState(STATE_TYPES.AWAITING_EXPLICIT_CHOICE, {
+    question: choiceData.question,
+    options: choiceData.options,
+    originalIntent: choiceData.originalIntent,
+    contextData: choiceData.contextData || {}
+  });
+  await saveConversationState(state);
+  return state;
+};
+
+/**
+ * Process explicit choice selection
+ */
+export const processExplicitChoice = async (userId, workspaceId, selectedOptionId) => {
+  const state = await getConversationState(userId, workspaceId);
+  
+  if (state.type !== STATE_TYPES.AWAITING_EXPLICIT_CHOICE) {
+    return null;
+  }
+
+  const { options, originalIntent, contextData } = state.context;
+  const selectedOption = options.find(opt => opt.id === selectedOptionId);
+  
+  if (!selectedOption) {
+    return { error: 'Invalid option selected' };
+  }
+
+  // Clear state after selection
+  await clearConversationState(userId, workspaceId);
+
+  return {
+    completed: true,
+    selectedOption,
+    originalIntent,
+    contextData
+  };
+};
+
+/**
+ * Check if input is ambiguous (yes/no/etc when expecting explicit choice)
+ */
+export const isAmbiguousInput = (input) => {
+  const ambiguousPatterns = [
+    /^(yes|y|ok|okay|sure|yep|yeah|yup)$/i,
+    /^(no|nope|nah)$/i,
+    /^(maybe|either|both|any)$/i,
+    /^(first|second|option|choice)$/i
+  ];
+  return ambiguousPatterns.some(pattern => pattern.test(input.trim()));
+};
+
 export default {
   STATE_TYPES,
   ConversationState,
@@ -243,5 +300,8 @@ export default {
   startTaskCreation,
   startHabitCreation,
   processStateResponse,
-  shouldUseState
+  shouldUseState,
+  startExplicitChoice,
+  processExplicitChoice,
+  isAmbiguousInput
 };

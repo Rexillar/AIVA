@@ -11,7 +11,6 @@
  * Copyright (c) 2024 Mohitraj Jadeja. All rights reserved.
  *=================================================================*/
 import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {

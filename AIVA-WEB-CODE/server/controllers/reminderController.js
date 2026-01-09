@@ -132,4 +132,99 @@ export const deleteReminder = asyncHandler(async (req, res) => {
     status: true,
     message: 'Reminder removed',
   });
-}); 
+});
+
+// @desc    Get today's reminders
+// @route   GET /api/reminders/today
+// @access  Private
+export const getTodayReminders = asyncHandler(async (req, res) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const reminders = await Reminder.find({
+    user: req.user._id,
+    date: {
+      $gte: today,
+      $lt: tomorrow
+    }
+  }).sort({ time: 1 });
+
+  res.json({
+    status: true,
+    count: reminders.length,
+    data: reminders,
+  });
+});
+
+// @desc    Update reminder time
+// @route   PUT /api/reminders/:id/time
+// @access  Private
+export const updateReminderTime = asyncHandler(async (req, res) => {
+  const { time, date } = req.body;
+  const reminder = await Reminder.findById(req.params.id);
+
+  if (!reminder) {
+    res.status(404);
+    throw new Error('Reminder not found');
+  }
+
+  if (reminder.user.toString() !== req.user._id.toString()) {
+    res.status(403);
+    throw new Error('Not authorized to update this reminder');
+  }
+
+  if (time) reminder.time = time;
+  if (date) reminder.date = new Date(date);
+
+  await reminder.save();
+
+  // Reschedule if email notifications are enabled
+  if (reminder.email) {
+    scheduleReminder({
+      userId: req.user._id,
+      reminderId: reminder._id,
+      date: reminder.date,
+      time: reminder.time,
+      notifyBefore: reminder.notifyBefore,
+    });
+  }
+
+  res.json({
+    status: true,
+    message: 'Reminder time updated successfully',
+    data: reminder,
+  });
+});
+
+// @desc    Delete all reminders on a specific date
+// @route   DELETE /api/reminders/batch/delete-by-date
+// @access  Private
+export const deleteAllRemindersOnDate = asyncHandler(async (req, res) => {
+  const { date } = req.body;
+
+  if (!date) {
+    res.status(400);
+    throw new Error('Date is required');
+  }
+
+  const targetDate = new Date(date);
+  targetDate.setHours(0, 0, 0, 0);
+  const nextDay = new Date(targetDate);
+  nextDay.setDate(nextDay.getDate() + 1);
+
+  const result = await Reminder.deleteMany({
+    user: req.user._id,
+    date: {
+      $gte: targetDate,
+      $lt: nextDay
+    }
+  });
+
+  res.json({
+    status: true,
+    message: `Deleted ${result.deletedCount} reminder(s) for ${date}`,
+    count: result.deletedCount,
+  });
+});

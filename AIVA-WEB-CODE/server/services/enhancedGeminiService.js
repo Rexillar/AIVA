@@ -684,7 +684,7 @@ Remember: You can directly control tasks and habits. Always provide actionable r
 
     // Call Gemini API
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -697,7 +697,9 @@ Remember: You can directly control tasks and habits. Always provide actionable r
     );
 
     if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.status}`);
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Gemini API Error Details:', JSON.stringify(errorData, null, 2));
+      throw new Error(`Gemini API error: ${response.status} - ${JSON.stringify(errorData)}`);
     }
 
     const data = await response.json();

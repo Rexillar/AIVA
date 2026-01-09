@@ -25,7 +25,7 @@ import {
 } from "react-icons/md";
 import Title from "../components/shared/display/Title";
 import Button from "../components/shared/buttons/Button";
-import { PRIORITY_STYLES, TASK_TYPE } from "../utils/constants";
+import { TASK_TYPE } from "../utils/constants";
 import ConfirmationDialog from "../components/shared/dialog/Dialogs";
 import {
   useDeleteTaskMutation,
@@ -35,12 +35,6 @@ import {
 import Loading from "../components/shared/feedback/Loader";
 import { toast } from "sonner";
 import { useSelector } from "react-redux";
-
-const ICONS = {
-  high: <MdKeyboardDoubleArrowUp />,
-  medium: <MdKeyboardArrowUp />,
-  low: <MdKeyboardArrowDown />,
-};
 
 const Trash = () => {
   const [openDialog, setOpenDialog] = useState(false);
@@ -150,65 +144,6 @@ const Trash = () => {
           }?`,
     );
     setOpenDialog(true);
-  };
-
-  const executeBulkOperation = async (operation) => {
-    const toastId = toast.loading(
-      `${operation === "restore" ? "Restoring" : "Deleting"} selected items...`,
-    );
-    let successCount = 0;
-    let failCount = 0;
-
-    try {
-      // Get the tasks that are actually in trash
-      const tasksToOperate = filteredTasks.filter(
-        (task) =>
-          selectedItems.has(task._id) &&
-          (task.isArchived === true || task.isDeleted === true),
-      );
-
-      for (const task of tasksToOperate) {
-        try {
-          if (operation === "restore") {
-            const result = await restoreTask({
-              taskId: task._id,
-              workspaceId: currentWorkspace._id,
-            }).unwrap();
-
-            if (result.status) {
-              successCount++;
-            } else {
-              //console.error(`Error restoring task: ${result.message}`);
-              failCount++;
-            }
-          } else {
-            await deleteTask({
-              taskId: task._id,
-              workspaceId: currentWorkspace._id,
-            }).unwrap();
-            successCount++;
-          }
-        } catch (error) {
-          //console.error(`Error ${operation}ing task:`, error);
-          failCount++;
-        }
-      }
-
-      toast.dismiss(toastId);
-      if (failCount > 0) {
-        toast.error(
-          `Failed to ${operation} ${failCount} items. ${successCount} were successful.`,
-        );
-      } else {
-        toast.success(`Successfully ${operation}d ${successCount} items`);
-      }
-
-      setSelectedItems(new Set());
-    } catch (error) {
-      //console.error(`Bulk ${operation} error:`, error);
-      toast.dismiss(toastId);
-      toast.error(`Failed to ${operation} items`);
-    }
   };
 
   const handleOperation = async () => {

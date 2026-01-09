@@ -10,12 +10,9 @@
  *=================================================================
  * Copyright (c) 2024 Mohitraj Jadeja. All rights reserved.
  *=================================================================*/
-import React from "react";
 import { FaBug, FaThumbsUp, FaUser } from "react-icons/fa"; // Example imports
 import { MdOutlineMessage, MdOutlineDoneAll } from "react-icons/md";
 import { GrInProgress } from "react-icons/gr";
-
-import { PaperAirplaneIcon } from "@heroicons/react/24/outline";
 
 export const TASKTYPEICON = {
   high: (

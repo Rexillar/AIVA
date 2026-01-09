@@ -39,7 +39,7 @@ export const getAIResponse = async (userMessage, userId, workspaceId) => {
     const prompt = `${assistantMasterPrompt}\n\nContext: ${JSON.stringify(context)}\n\nUser: ${userMessage}`;
 
     // Use REST API directly (v1beta with v1 body)
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -54,7 +54,9 @@ export const getAIResponse = async (userMessage, userId, workspaceId) => {
     });
 
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Gemini API Error Details:', JSON.stringify(errorData, null, 2));
+      throw new Error(`API error: ${response.status} - ${JSON.stringify(errorData)}`);
     }
 
     const data = await response.json();

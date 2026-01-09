@@ -106,6 +106,16 @@ if (statisticsSection) {
 }
 
 // Three.js Background Animation
+function animate(currentTime) {
+    requestAnimationFrame(animate);
+    
+    if (currentTime - lastTime >= frameInterval) {
+        particlesMesh.rotation.y += 0.001;
+        renderer.render(scene, camera);
+        lastTime = currentTime;
+    }
+}
+
 const canvas = document.getElementById('hero-canvas');
 if (canvas) {
     const scene = new THREE.Scene();
@@ -146,16 +156,6 @@ if (canvas) {
     let lastTime = 0;
     const targetFPS = 60;
     const frameInterval = 1000 / targetFPS;
-
-    function animate(currentTime) {
-        requestAnimationFrame(animate);
-        
-        if (currentTime - lastTime >= frameInterval) {
-            particlesMesh.rotation.y += 0.001;
-            renderer.render(scene, camera);
-            lastTime = currentTime;
-        }
-    }
 
     animate(0);
 

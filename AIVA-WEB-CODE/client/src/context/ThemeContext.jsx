@@ -40,7 +40,7 @@ export const ThemeProvider = ({ children }) => {
   );
 };
 
-export const useTheme = () => {
+export const useTheme = () => { // eslint-disable-line react-refresh/only-export-components
   const context = useContext(ThemeContext);
   if (context === undefined) {
     throw new Error("useTheme must be used within a ThemeProvider");

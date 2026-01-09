@@ -95,7 +95,7 @@ const Users = () => {
       isAdmin,
       canManageMembers,
     };
-  }, [user?._id, workspaceData?.owner, members]);
+  }, [user?._id, members, workspaceData]);
 
   const { isWorkspaceOwner, canManageMembers } = permissions;
 
