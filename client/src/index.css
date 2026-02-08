@@ -21,8 +21,80 @@
     @apply w-full h-full bg-white dark:bg-gray-900 rounded-lg shadow-sm;
   }
 
+  /* CRITICAL: Enable free-form text selection for Issue #11 */
   .ProseMirror {
     @apply w-full h-full p-4 focus:outline-none font-sans;
+    user-select: text !important;
+    cursor: text !important;
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -ms-user-select: text !important;
+  }
+
+  /* Ensure all text content is selectable */
+  .ProseMirror * {
+    user-select: text !important;
+    cursor: text !important;
+  }
+
+  /* Text formatting styles */
+  .ProseMirror strong,
+  .ProseMirror b,
+  .prose strong,
+  .prose b {
+    font-weight: 700 !important;
+    color: inherit !important;
+  }
+
+  .ProseMirror em,
+  .ProseMirror i,
+  .prose em,
+  .prose i {
+    font-style: italic !important;
+  }
+
+  .ProseMirror s,
+  .prose s {
+    text-decoration: line-through !important;
+  }
+
+  /* Underline support */
+  .ProseMirror u {
+    text-decoration: underline;
+  }
+
+  /* Subscript and Superscript */
+  .ProseMirror sub {
+    vertical-align: sub;
+    font-size: smaller;
+  }
+
+  .ProseMirror sup {
+    vertical-align: super;
+    font-size: smaller;
+  }
+
+  /* Highlight colors */
+  .ProseMirror mark {
+    border-radius: 0.125rem;
+    padding: 0.125rem;
+  }
+
+  /* Text alignment */
+  .ProseMirror [style*="text-align: left"] {
+    text-align: left;
+  }
+
+  .ProseMirror [style*="text-align: center"] {
+    text-align: center;
+  }
+
+  .ProseMirror [style*="text-align: right"] {
+    text-align: right;
+  }
+
+  .ProseMirror [style*="text-align: justify"] {
+    text-align: justify;
   }
 
   .ProseMirror h1 {
