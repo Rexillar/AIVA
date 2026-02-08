@@ -74,9 +74,8 @@ const EditorToolbar = ({ editor }) => {
   const ToolbarButton = ({ onClick, active, icon: Icon, title }) => (
     <button
       onClick={onClick}
-      className={`p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors ${
-        active ? "bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400" : "text-gray-700 dark:text-gray-300"
-      }`}
+      className={`p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors ${active ? "bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400" : "text-gray-700 dark:text-gray-300"
+        }`}
       title={title}
     >
       <Icon className="w-4 h-4" />
@@ -174,9 +173,8 @@ const EditorToolbar = ({ editor }) => {
             <button
               key={color}
               onClick={() => editor.chain().focus().setColor(color).run()}
-              className={`w-5 h-5 rounded border border-gray-300 dark:border-gray-600 ${
-                editor.isActive("textStyle", { color }) ? "ring-2 ring-blue-500" : ""
-              }`}
+              className={`w-5 h-5 rounded border border-gray-300 dark:border-gray-600 ${editor.isActive("textStyle", { color }) ? "ring-2 ring-blue-500" : ""
+                }`}
               style={{ backgroundColor: color }}
               title={`Text color ${color}`}
             />
@@ -197,9 +195,8 @@ const EditorToolbar = ({ editor }) => {
             <button
               key={color}
               onClick={() => editor.chain().focus().toggleHighlight({ color }).run()}
-              className={`w-5 h-5 rounded border border-gray-300 dark:border-gray-600 ${
-                editor.isActive("highlight", { color }) ? "ring-2 ring-blue-500" : ""
-              }`}
+              className={`w-5 h-5 rounded border border-gray-300 dark:border-gray-600 ${editor.isActive("highlight", { color }) ? "ring-2 ring-blue-500" : ""
+                }`}
               style={{ backgroundColor: color }}
               title={`Highlight ${color}`}
             />
@@ -449,7 +446,7 @@ const NoteEditor = ({ note, workspaceId }) => {
           type="text"
           value={title}
           onChange={handleTitleChange}
-          placeholder="Untitled Note"
+          placeholder="Note title"
           className="flex-1 text-3xl font-bold bg-transparent focus:outline-none border-none placeholder:text-gray-400 dark:placeholder:text-gray-600 text-gray-900 dark:text-gray-100"
         />
         {isSaving && (

@@ -122,6 +122,10 @@ const workspaceSchema = new Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null
+  },
+  noteSequence: {
+    type: Number,
+    default: 0
   }
 }, {
   timestamps: true,

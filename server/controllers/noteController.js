@@ -76,7 +76,7 @@ export const getWorkspaceNotes = asyncHandler(async (req, res) => {
       { isTrashed: { $exists: false } },
       { isTrashed: null }
     ]
-  }).sort({ createdAt: 1 });
+  }).sort({ updatedAt: -1 });
 
   // Fix any notes that might have undefined isArchived
   const fixedNotes = notes.map(note => ({
@@ -141,8 +141,23 @@ export const createNote = asyncHandler(async (req, res) => {
   }
 
   // Create note
+  let finalTitle = title;
+
+  // If title is the default "Untitled Note", use atomic incremental naming
+  if (title === 'Untitled Note' || title === 'Note') {
+    const updatedWorkspace = await Workspace.findByIdAndUpdate(
+      workspace,
+      { $inc: { noteSequence: 1 } },
+      { new: true }
+    );
+
+    if (updatedWorkspace) {
+      finalTitle = `Note ${updatedWorkspace.noteSequence}`;
+    }
+  }
+
   const note = await Note.create({
-    title,
+    title: finalTitle,
     content,
     workspace,
     creator: userId,
@@ -302,7 +317,7 @@ export const listNotes = asyncHandler(async (req, res) => {
 
   const notes = await Note.find(query)
     .populate('creator', 'name email avatar')
-    .sort({ createdAt: 1 });
+    .sort({ updatedAt: -1 });
 
   res.json({
     status: true,
@@ -337,7 +352,7 @@ export const searchNotes = asyncHandler(async (req, res) => {
     isTrashed: { $ne: true }
   })
     .populate('creator', 'name email avatar')
-    .sort({ createdAt: 1 });
+    .sort({ updatedAt: -1 });
 
   res.json({
     status: true,

@@ -228,19 +228,9 @@ export const Notes = ({ workspaceId: propWorkspaceId }) => {
 
   const handleNewNote = async () => {
     try {
-      // Calculate next note number
-      const existingTitles = notes.map(n => n.title);
-      let nextNumber = 1;
-      let newTitle = `Note ${nextNumber}`;
-
-      while (existingTitles.includes(newTitle)) {
-        nextNumber++;
-        newTitle = `Note ${nextNumber}`;
-      }
-
       const result = await createNote({
         workspaceId,
-        title: newTitle,
+        title: "Untitled Note",
         content: "<p>Start writing your note...</p>",
         mode: "text",
         type: "simple",
