@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIVA Web Platform Documentation</title>
+    <link rel="stylesheet" href="../assets/css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer">
+    <style>
+        :root {
+            --primary-color: #6c5ce7;
+            --primary-dark: #5541d9;
+            --accent-color: #a29bfe;
+            --text-color: #2d3436;
+            --text-secondary: #666666;
+            --bg-color: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --border-color: #e1e1e1;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--bg-color);
+        }
+
+        .doc-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .doc-header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .doc-header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: var(--primary-color);
+        }
+
+        .doc-nav {
+            background: var(--bg-secondary);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
+
+        .doc-nav ul {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .doc-nav a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .doc-nav a:hover {
+            color: var(--primary-dark);
+        }
+
+        .doc-section {
+            margin-bottom: 3rem;
+        }
+
+        .doc-section h2 {
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--accent-color);
+            padding-bottom: 0.5rem;
+        }
+
+        .doc-section h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: var(--text-color);
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-card {
+            background: var(--bg-secondary);
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .feature-card i {
+            font-size: 2rem;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h4 {
+            margin-bottom: 0.5rem;
+            color: var(--text-color);
+        }
+
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .step-card {
+            background: var(--bg-secondary);
+            padding: 2rem;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            background: var(--primary-color);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem;
+            font-weight: bold;
+        }
+
+        .code-block {
+            background: #f8f9fa;
+            border: 1px solid #e1e1e1;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+        }
+
+        .note {
+            background: #e8f4fd;
+            border-left: 4px solid var(--primary-color);
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .api-endpoint {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+
+        .method.get { background: #10b981; color: white; }
+        .method.post { background: #f59e0b; color: white; }
+        .method.put { background: #3b82f6; color: white; }
+        .method.delete { background: #ef4444; color: white; }
+    </style>
+</head>
+<body>
+    <div class="doc-container">
+        <header class="doc-header">
+            <h1>AIVA Web Platform Documentation</h1>
+            <p>Complete guide for using the AIVA MERN stack web application</p>
+        </header>
+
+        <nav class="doc-nav">
+            <ul>
+                <li><a href="#introduction">Introduction</a></li>
+                <li><a href="#getting-started">Getting Started</a></li>
+                <li><a href="#features">Features</a></li>
+                <li><a href="#api">API Reference</a></li>
+                <li><a href="#security">Security</a></li>
+                <li><a href="#troubleshooting">Troubleshooting</a></li>
+            </ul>
+        </nav>
+
+        <main class="doc-content">
+            <section id="introduction" class="doc-section">
+                <h2>Introduction</h2>
+                <p>AIVA is a modern web application built with the MERN stack (MongoDB, Express.js, React, Node.js) designed for task management, team collaboration, and productivity enhancement. It provides a comprehensive platform for individuals and teams to organize their work, track habits, and collaborate effectively.</p>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <i class="fas fa-tasks"></i>
+                        <h4>Task Management</h4>
+                        <p>Organize and track tasks with advanced project management tools</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-users"></i>
+                        <h4>Team Collaboration</h4>
+                        <p>Work together seamlessly with real-time collaboration features</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-calendar-check"></i>
+                        <h4>Habit Tracking</h4>
+                        <p>Build and maintain positive habits with smart reminders</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-robot"></i>
+                        <h4>AI Assistant</h4>
+                        <p>Intelligent chatbot for task automation and smart suggestions</p>
+                    </div>
+                </div>
+
+                <div class="note">
+                    <strong>Key Features:</strong>
+                    <ul>
+                        <li>Task and project management with advanced organization tools</li>
+                        <li>Team collaboration with shared workspaces and real-time updates</li>
+                        <li>Habit tracking with progress analytics and smart reminders</li>
+                        <li>AI-powered assistant for task automation and suggestions</li>
+                        <li>Calendar integration for deadline management</li>
+                        <li>Rich text notes and documentation capabilities</li>
+                        <li>Enterprise-grade security with encrypted data</li>
+                        <li>Responsive design for all devices</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section id="getting-started" class="doc-section">
+                <h2>Getting Started</h2>
+                <p>Getting started with AIVA is simple. Follow these steps to set up your account and workspace.</p>
+
+                <div class="steps-grid">
+                    <div class="step-card">
+                        <div class="step-number">1</div>
+                        <h4>Create Account</h4>
+                        <p>Visit the AIVA web platform and sign up for a free account</p>
+                    </div>
+                    <div class="step-card">
+                        <div class="step-number">2</div>
+                        <h4>Set Up Workspace</h4>
+                        <p>Create your personal workspace and configure your preferences</p>
+                    </div>
+                    <div class="step-card">
+                        <div class="step-number">3</div>
+                        <h4>Start Organizing</h4>
+                        <p>Begin creating tasks, notes, and collaborating with your team</p>
+                    </div>
+                </div>
+
+                <h3>System Requirements</h3>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <i class="fas fa-globe"></i>
+                        <h4>Modern Browser</h4>
+                        <p>Chrome, Firefox, Safari, or Edge (latest versions)</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-wifi"></i>
+                        <h4>Internet Connection</h4>
+                        <p>Stable internet connection for real-time features</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-mobile-alt"></i>
+                        <h4>Responsive Design</h4>
+                        <p>Works on desktop, tablet, and mobile devices</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="features" class="doc-section">
+                <h2>Features</h2>
+
+                <h3>Task Management</h3>
+                <p>Create, organize, and track tasks with advanced project management capabilities:</p>
+                <ul>
+                    <li>Create tasks with due dates, priorities, and descriptions</li>
+                    <li>Organize tasks into projects and categories</li>
+                    <li>Set reminders and notifications</li>
+                    <li>Track progress with completion status</li>
+                    <li>Collaborate on tasks with team members</li>
+                </ul>
+
+                <h3>Team Collaboration</h3>
+                <p>Work together effectively with built-in collaboration tools:</p>
+                <ul>
+                    <li>Create shared workspaces for teams</li>
+                    <li>Invite team members with different permission levels</li>
+                    <li>Real-time updates and notifications</li>
+                    <li>Comment and discuss on tasks and projects</li>
+                    <li>Share files and documents securely</li>
+                </ul>
+
+                <h3>Habit Tracking</h3>
+                <p>Build and maintain positive habits with intelligent tracking:</p>
+                <ul>
+                    <li>Create custom habit goals and schedules</li>
+                    <li>Track daily progress with streak counters</li>
+                    <li>Receive smart reminders and motivation</li>
+                    <li>View progress analytics and insights</li>
+                    <li>Set up habit challenges and goals</li>
+                </ul>
+
+                <h3>AI Assistant</h3>
+                <p>Get help from our intelligent AI assistant:</p>
+                <ul>
+                    <li>Task automation and suggestions</li>
+                    <li>Smart scheduling recommendations</li>
+                    <li>Productivity insights and tips</li>
+                    <li>Quick task creation via natural language</li>
+                    <li>24/7 availability for assistance</li>
+                </ul>
+            </section>
+
+            <section id="api" class="doc-section">
+                <h2>API Reference</h2>
+                <p>The AIVA API provides programmatic access to all platform features. All API endpoints require authentication.</p>
+
+                <h3>Authentication</h3>
+                <p>Include your JWT token in the Authorization header:</p>
+                <div class="code-block">
+Authorization: Bearer your_jwt_token_here
+                </div>
+
+                <h3>Tasks API</h3>
+                <div class="api-endpoint">
+                    <span class="method get">GET</span> <code>/api/tasks</code>
+                    <p>Get all tasks for the authenticated user</p>
+                </div>
+
+                <div class="api-endpoint">
+                    <span class="method post">POST</span> <code>/api/tasks</code>
+                    <p>Create a new task</p>
+                </div>
+
+                <div class="api-endpoint">
+                    <span class="method put">PUT</span> <code>/api/tasks/:id</code>
+                    <p>Update an existing task</p>
+                </div>
+
+                <div class="api-endpoint">
+                    <span class="method delete">DELETE</span> <code>/api/tasks/:id</code>
+                    <p>Delete a task</p>
+                </div>
+
+                <h3>Workspaces API</h3>
+                <div class="api-endpoint">
+                    <span class="method get">GET</span> <code>/api/workspaces</code>
+                    <p>Get user's workspaces</p>
+                </div>
+
+                <div class="api-endpoint">
+                    <span class="method post">POST</span> <code>/api/workspaces</code>
+                    <p>Create a new workspace</p>
+                </div>
+            </section>
+
+            <section id="security" class="doc-section">
+                <h2>Security</h2>
+                <p>AIVA implements enterprise-grade security measures to protect your data:</p>
+
+                <h3>Data Protection</h3>
+                <ul>
+                    <li>End-to-end encryption for all data transmission</li>
+                    <li>Secure password hashing with bcrypt</li>
+                    <li>JWT tokens for secure authentication</li>
+                    <li>Regular security audits and updates</li>
+                </ul>
+
+                <h3>Privacy</h3>
+                <ul>
+                    <li>No data sharing with third parties</li>
+                    <li>GDPR compliant data handling</li>
+                    <li>User-controlled data retention</li>
+                    <li>Secure cloud storage with Google Cloud</li>
+                </ul>
+
+                <h3>Best Practices</h3>
+                <ul>
+                    <li>Use strong, unique passwords</li>
+                    <li>Enable two-factor authentication when available</li>
+                    <li>Regularly review and update access permissions</li>
+                    <li>Log out from shared devices</li>
+                </ul>
+            </section>
+
+            <section id="troubleshooting" class="doc-section">
+                <h2>Troubleshooting</h2>
+
+                <h3>Common Issues</h3>
+
+                <h4>Login Problems</h4>
+                <p>If you're having trouble logging in:</p>
+                <ul>
+                    <li>Check that your email and password are correct</li>
+                    <li>Clear your browser cache and cookies</li>
+                    <li>Try using a different browser</li>
+                    <li>Contact support if the problem persists</li>
+                </ul>
+
+                <h4>Loading Issues</h4>
+                <p>If the application isn't loading properly:</p>
+                <ul>
+                    <li>Ensure you have a stable internet connection</li>
+                    <li>Try refreshing the page</li>
+                    <li>Clear your browser cache</li>
+                    <li>Check if your browser is up to date</li>
+                </ul>
+
+                <h4>Feature Not Working</h4>
+                <p>If a specific feature isn't working:</p>
+                <ul>
+                    <li>Check the browser console for error messages</li>
+                    <li>Try logging out and back in</li>
+                    <li>Clear browser cache and reload</li>
+                    <li>Report the issue to our support team</li>
+                </ul>
+
+                <h3>Getting Help</h3>
+                <p>If you need additional help:</p>
+                <ul>
+                    <li>Check our FAQ section</li>
+                    <li>Visit our GitHub repository for issues and discussions</li>
+                    <li>Contact our support team through the web platform</li>
+                    <li>Join our community discussions</li>
+                </ul>
+            </section>
+        </main>
+    </div>
+</body>
+</html>
+        :root {
+            /* Colors */
+            --primary: #10a37f;
+            --primary-dark: #0e906f;
+            --secondary: #202123;
+            --accent: #6e6e80;
+            --success: #10a37f;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            
+            /* Text Colors */
+            --text-primary: #202123;
+            --text-secondary: #353740;
+            --text-tertiary: #6e6e80;
+            --text-inverse: #ffffff;
+            
+            /* Background Colors */
+            --bg-primary: #ffffff;
+            --bg-secondary: #f7f7f8;
+            --bg-tertiary: #fafafa;
+            --bg-code: #f7f7f8;
+            --bg-hover: #f3f4f6;
+            
+            /* Border Colors */
+            --border-light: #e5e5e5;
+            --border-dark: #d1d5db;
+            
+            /* Spacing */
+            --space-1: 0.25rem;
+            --space-2: 0.5rem;
+            --space-3: 0.75rem;
+            --space-4: 1rem;
+            --space-5: 1.25rem;
+            --space-6: 1.5rem;
+            --space-8: 2rem;
+            --space-10: 2.5rem;
+            --space-12: 3rem;
+            
+            /* Typography */
+            --font-sans: 'Söhne', 'Inter', system-ui, -apple-system, sans-serif;
+            --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            --line-height-tight: 1.25;
+            --line-height-normal: 1.5;
+            --line-height-relaxed: 1.75;
+            
+            /* Border Radius */
+            --radius-sm: 0.375rem;
+            --radius-md: 0.5rem;
+            --radius-lg: 0.75rem;
+            
+            /* Shadows */
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+            
+            /* Transitions */
+            --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+
+            /* Enhanced Text Styles */
+            --text-xs: 0.75rem;
+            --text-sm: 0.875rem;
+            --text-base: 1rem;
+            --text-lg: 1.125rem;
+            --text-xl: 1.25rem;
+            --text-2xl: 1.5rem;
+            --text-3xl: 1.875rem;
+            --text-4xl: 2.25rem;
+            
+            /* Font Weights */
+            --font-light: 300;
+            --font-normal: 400;
+            --font-medium: 500;
+            --font-semibold: 600;
+            --font-bold: 700;
+            
+            /* Letter Spacing */
+            --tracking-tight: -0.025em;
+            --tracking-normal: 0;
+            --tracking-wide: 0.025em;
+            
+            /* Enhanced Spacing */
+            --section-spacing: 4rem;
+            --content-spacing: 2.5rem;
+            --element-spacing: 1.5rem;
+            
+            /* Z-index Layers */
+            --z-nav: 1000;
+            --z-dropdown: 2000;
+            --z-modal: 3000;
+            
+            /* Code Colors */
+            --code-keyword: #ff7b72;
+            --code-function: #d2a8ff;
+            --code-string: #a5d6ff;
+            --code-comment: #8b949e;
+            --code-number: #79c0ff;
+            --code-operator: #ff7b72;
+            --code-punctuation: #c9d1d9;
+
+            /* Enhanced Typography System */
+            --gradient-primary: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            --gradient-accent: linear-gradient(135deg, #7928CA 0%, #FF0080 100%);
+            --gradient-success: linear-gradient(135deg, #0CAB65 0%, #0DCC6B 100%);
+            --gradient-warning: linear-gradient(135deg, #FF8A00 0%, #FFB800 100%);
+            --gradient-danger: linear-gradient(135deg, #FF0000 0%, #FF4D4D 100%);
+            
+            /* Glass Effects */
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            
+            /* Enhanced Shadows */
+            --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.1);
+            --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.15);
+            
+            /* Enhanced Spacing */
+            --spacing-xxs: 0.25rem;
+            --spacing-xs: 0.5rem;
+            --spacing-sm: 0.75rem;
+            --spacing-md: 1rem;
+            --spacing-lg: 1.5rem;
+            --spacing-xl: 2rem;
+            --spacing-2xl: 3rem;
+            --spacing-3xl: 4rem;
+        }
+
+        /* Dark Mode Colors */
+        [data-theme="dark"] {
+            --primary: #10a37f;
+            --primary-dark: #0e906f;
+            --secondary: #202123;
+            --text-primary: #ffffff;
+            --text-secondary: #c5c5d2;
+            --text-tertiary: #8e8ea0;
+            --bg-primary: #0f0f0f;
+            --bg-secondary: #1a1a1a;
+            --bg-tertiary: #202123;
+            --bg-code: #1a1a1a;
+            --bg-hover: #2a2a2a;
+            --border-light: #2a2a2a;
+            --border-dark: #373737;
+            --code-keyword: #ff7b72;
+            --code-function: #d2a8ff;
+            --code-string: #a5d6ff;
+            --code-comment: #8b949e;
+            --code-number: #79c0ff;
+            --code-operator: #ff7b72;
+            --code-punctuation: #c9d1d9;
+        }
+
+        /* Enhanced Base Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            color: var(--text-primary);
+            background: var(--bg-primary);
+            line-height: var(--line-height-normal);
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            letter-spacing: var(--tracking-normal);
+        }
+
+        /* Enhanced Typography */
+        h1, h2, h3, h4, h5, h6 {
+            font-family: var(--font-sans);
+            font-weight: var(--font-semibold);
+            line-height: 1.3;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-lg);
+            letter-spacing: -0.02em;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: var(--font-bold);
+            letter-spacing: -0.03em;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: var(--spacing-2xl);
+        }
+
+        h2 {
+            font-size: 2rem;
+            border-bottom: 2px solid var(--border-light);
+            padding-bottom: var(--spacing-md);
+            margin-top: var(--spacing-3xl);
+        }
+
+        h3 {
+            font-size: 1.5rem;
+            margin-top: var(--spacing-2xl);
+        }
+
+        h4 {
+            font-size: 1.25rem;
+            margin-top: var(--spacing-xl);
+        }
+
+        /* Enhanced Links */
+        a {
+            color: var(--primary);
+            text-decoration: none;
+            transition: all 0.2s ease;
+            border-bottom: 1px solid transparent;
+        }
+
+        a:hover {
+            border-bottom-color: var(--primary);
+        }
+
+        /* Enhanced Code Blocks */
+        .code-block {
+            background: var(--bg-code);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-lg);
+            margin: var(--spacing-lg) 0;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid var(--border-light);
+        }
+
+        .code-block::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--gradient-primary);
+        }
+
+        .code-block pre {
+            margin: 0;
+            padding: 0;
+            overflow-x: auto;
+        }
+
+        .code-block code {
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            line-height: 1.7;
+        }
+
+        /* Enhanced API Documentation */
+        .api-endpoint {
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-xl);
+            margin: var(--spacing-2xl) 0;
+            border: 1px solid var(--border-light);
+            box-shadow: var(--shadow-md);
+        }
+
+        .api-method {
+            display: inline-block;
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border-radius: var(--radius-sm);
+            font-weight: var(--font-semibold);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            margin-right: var(--spacing-sm);
+        }
+
+        .endpoint-url {
+            font-family: var(--font-mono);
+            font-size: 1.1rem;
+            color: var(--text-primary);
+            padding: var(--spacing-sm) var(--spacing-md);
+            background: var(--bg-code);
+            border-radius: var(--radius-sm);
+            margin: var(--spacing-sm) 0;
+            display: inline-block;
+        }
+
+        /* Enhanced Tables */
+        .param-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: var(--spacing-xl) 0;
+            background: var(--bg-primary);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .param-table th,
+        .param-table td {
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-bottom: 1px solid var(--border-light);
+            text-align: left;
+        }
+
+        .param-table th {
+            background: var(--bg-secondary);
+            font-weight: var(--font-semibold);
+            color: var(--text-primary);
+        }
+
+        .param-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .param-table tr:hover td {
+            background: var(--bg-hover);
+        }
+
+        /* Enhanced Feature Cards */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: var(--spacing-xl);
+            margin: var(--spacing-2xl) 0;
+        }
+
+        .feature-card {
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-xl);
+            transition: all 0.3s ease;
+            border: 1px solid var(--border-light);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--gradient-primary);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .feature-card:hover::before {
+            opacity: 1;
+        }
+
+        .feature-card i {
+            font-size: 1.5rem;
+            color: var(--primary);
+            margin-bottom: var(--spacing-md);
+        }
+
+        /* Enhanced Notes and Warnings */
+        .note,
+        .warning {
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-xl);
+            margin: var(--spacing-xl) 0;
+            position: relative;
+            border-left: 4px solid var(--primary);
+        }
+
+        .warning {
+            border-left-color: var(--warning);
+        }
+
+        .note strong,
+        .warning strong {
+            display: block;
+            margin-bottom: var(--spacing-sm);
+            color: var(--text-primary);
+        }
+
+        /* Enhanced Mobile Navigation */
+        .mobile-nav-toggle {
+            display: none;
+            position: fixed;
+            bottom: var(--spacing-xl);
+            right: var(--spacing-xl);
+            width: 48px;
+            height: 48px;
+            background: var(--gradient-primary);
+            color: white;
+            border-radius: 50%;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: var(--shadow-lg);
+            z-index: var(--z-nav);
+        }
+
+        @media (max-width: 1024px) {
+            .mobile-nav-toggle {
+                display: flex;
+            }
+
+            .doc-sidebar {
+                display: none;
+                position: fixed;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: var(--bg-primary);
+                padding: var(--spacing-lg);
+                height: 70vh;
+                z-index: calc(var(--z-nav) - 1);
+                box-shadow: var(--shadow-lg);
+                border-top-left-radius: var(--radius-lg);
+                border-top-right-radius: var(--radius-lg);
+                overflow-y: auto;
+            }
+
+            .doc-sidebar.active {
+                display: block;
+            }
+
+            .doc-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Print Styles */
+        @media print {
+            .doc-sidebar,
+            .mobile-nav-toggle,
+            .navbar {
+                display: none;
+            }
+
+            .doc-container {
+                display: block;
+                padding: 0;
+            }
+
+            .doc-content {
+                max-width: none;
+            }
+
+            a {
+                text-decoration: underline;
+            }
+
+            .code-block {
+                border: 1px solid #ddd;
+                page-break-inside: avoid;
+            }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-dark);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-tertiary);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="container nav-container">
+            <a href="../index.html" class="logo">
+                <img src="../assets/Icon.ico" alt="AIVA Logo">
+                <span>AIVA</span>
+            </a>
+            <div class="nav-links">
+                <a href="../index.html">Home</a>
+                <a href="documentation.html" class="active">Documentation</a>
+                <a href="../index.html#contact">Contact</a>
+            </div>
+            <div class="nav-buttons">
+                <button class="theme-toggle">
+                    <img src="../assets/sun-solid.svg" alt="Light Mode" class="theme-icon">
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="doc-container">
+        <aside class="doc-sidebar">
+            <nav class="doc-nav">
+                <ul>
+                    <li><a href="#introduction" class="active">Introduction</a></li>
+                    <li><a href="#installation">Installation</a></li>
+                    <li><a href="#frontend">Frontend</a></li>
+                    <li><a href="#backend">Backend</a></li>
+                    <li><a href="#api">API Reference</a></li>
+                    <li><a href="#features">Features</a></li>
+                    <li><a href="#security">Security</a></li>
+                    <li><a href="#troubleshooting">Troubleshooting</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="doc-content">
+            <section id="introduction" class="doc-section">
+                <h2>Introduction</h2>
+                <p>AIVA (Advanced Intelligent Virtual Assistant) is a powerful AI-powered desktop application that combines natural language processing, voice interaction, and system control capabilities. Built with Electron.js for the frontend and Python FastAPI for the backend, AIVA provides a seamless experience for users to interact with their computer through natural language commands.</p>
+                
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <i class="fas fa-brain"></i>
+                        <h4>AI-Powered</h4>
+                        <p>Advanced natural language processing using Groq API for intelligent responses and actions</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-microphone"></i>
+                        <h4>Voice Control</h4>
+                        <p>Hands-free operation with voice input and text-to-speech capabilities</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-sliders-h"></i>
+                        <h4>System Control</h4>
+                        <p>Control system settings, launch applications, and manage files through voice commands</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-robot"></i>
+                        <h4>Smart Assistant</h4>
+                        <p>Context-aware responses and intelligent task automation</p>
+                    </div>
+                </div>
+
+                <div class="note">
+                    <strong>Key Features:</strong>
+                    <ul>
+                        <li>Natural language processing with Groq API integration</li>
+                        <li>Voice input and text-to-speech capabilities</li>
+                        <li>System control functions (volume, brightness, app launching)</li>
+                        <li>File management and media control</li>
+                        <li>Weather and currency conversion utilities</li>
+                        <li>Note-taking and task management</li>
+                        <li>Real-time chat with persistent history</li>
+                        <li>Dark/light mode support</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section id="installation" class="doc-section">
+                <h2>Installation</h2>
+                <p>AIVA is available as a standalone executable file, making installation simple and straightforward. Follow these steps to get started:</p>
+
+                <div class="installation-steps">
+                    <div class="step-card">
+                        <div class="step-number">1</div>
+                        <h4>Download</h4>
+                        <p>Download the latest version of AIVA for your operating system</p>
+                        <a href="#" class="download-button">
+                            <i class="fas fa-download"></i>
+                            Download AIVA
+                        </a>
+                    </div>
+                    <div class="step-card">
+                        <div class="step-number">2</div>
+                        <h4>Install</h4>
+                        <p>Run the installer and follow the installation wizard</p>
+                    </div>
+                    <div class="step-card">
+                        <div class="step-number">3</div>
+                        <h4>Launch</h4>
+                        <p>Start AIVA from your desktop or start menu</p>
+                    </div>
+                </div>
+
+                <div class="system-requirements">
+                    <h3>System Requirements</h3>
+                    <div class="requirements-grid">
+                        <div class="requirement-item">
+                            <i class="fas fa-microchip"></i>
+                            <span>Processor: Intel Core i5 or equivalent</span>
+                        </div>
+                        <div class="requirement-item">
+                            <i class="fas fa-memory"></i>
+                            <span>RAM: 8GB minimum</span>
+                        </div>
+                        <div class="requirement-item">
+                            <i class="fas fa-hdd"></i>
+                            <span>Storage: 500MB free space</span>
+                        </div>
+                        <div class="requirement-item">
+                            <i class="fas fa-desktop"></i>
+                            <span>OS: Windows 10/11, macOS 10.15+, Linux</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="note">
+                    <strong>First-Time Setup:</strong>
+                    <p>When you first launch AIVA, you'll need to:</p>
+                    <ol>
+                        <li>Sign in with your AIVA account (or create one)</li>
+            
+                    </ol>
+                </div>
+
+                <div class="warning">
+                    <strong>Important:</strong>
+                    <p>Make sure to download AIVA only from our official website or trusted sources to ensure security and authenticity.</p>
+                </div>
+            </section>
+
+            <section id="frontend" class="doc-section">
+                <h2>Frontend Components</h2>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <i class="fas fa-database"></i>
+                        <h4>Chat Session Management</h4>
+                        <p>The frontend implements a robust chat session management system using IndexedDB for local storage:</p>
+                        <div class="code-block">
+                            <pre>// Initialize IndexedDB
+const DB_NAME = 'aiChatDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'aiReplies';
+
+// Store chat messages
+async function storeAIReply(chatId, message, response) {
+    // Store message in IndexedDB
+}</pre>
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-microphone"></i>
+                        <h4>Voice Processing</h4>
+                        <p>Voice input and output capabilities:</p>
+                        <div class="code-block">
+                            <pre>// Voice input handling
+async function handleSpeech() {
+    // Process voice input
+    // Convert to text
+    // Send to backend
+}
+
+// Text-to-speech
+async function textToSpeechAPI(text) {
+    // Convert text to speech
+    // Play audio
+}</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>UI Components</h3>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <i class="fas fa-comments"></i>
+                        <h4>Chat Interface</h4>
+                        <p>Real-time chat with message history and persistent storage</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-microphone-alt"></i>
+                        <h4>Voice Controls</h4>
+                        <p>Voice input/output controls with visual feedback</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-palette"></i>
+                        <h4>Theme Switching</h4>
+                        <p>Dark/light mode with smooth transitions</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-robot"></i>
+                        <h4>AI Avatar</h4>
+                        <p>Animated AI avatar for better user interaction</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="backend" class="doc-section">
+                <h2>Backend Services</h2>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <i class="fas fa-code"></i>
+                        <h4>API Endpoints</h4>
+                        <div class="code-block">
+                            <pre># Main endpoints
+@app.post("/generate")  # Generate AI responses
+@app.post("/api/chat")  # Handle chat messages
+@app.post("/api/assistant")  # Process assistant queries
+@app.post("/api/speech")  # Handle speech input
+@app.post("/api/noteai")  # Process note-taking commands
+@app.post("/api/media")  # Control media playback</pre>
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-cogs"></i>
+                        <h4>Function Processing</h4>
+                        <p>The backend uses a sophisticated function analysis system:</p>
+                        <div class="code-block">
+                            <pre>def analyze_needed_functions(client, query, function_descriptions):
+    """Analyze which functions are needed based on the query"""
+    # Process query
+    # Determine required functions
+    # Return function list</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>Available Functions</h3>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <i class="fas fa-cloud-sun"></i>
+                        <h4>Weather Information</h4>
+                        <p>Get real-time weather data for any location</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-exchange-alt"></i>
+                        <h4>Currency Conversion</h4>
+                        <p>Convert between different currencies</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-volume-up"></i>
+                        <h4>System Volume</h4>
+                        <p>Control system volume levels</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-sun"></i>
+                        <h4>Screen Brightness</h4>
+                        <p>Adjust screen brightness levels</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-folder"></i>
+                        <h4>File Management</h4>
+                        <p>Browse and manage files</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-play"></i>
+                        <h4>Media Control</h4>
+                        <p>Control media playback</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="api" class="doc-section">
+                <h2>API Reference</h2>
+                
+                <div class="note">
+                    <strong>Note:</strong>
+                    <p>AIVA uses our company's enterprise API service, so you don't need to configure any API keys. The service is automatically managed and optimized for your needs.</p>
+                </div>
+
+                <div class="api-endpoint">
+                    <span class="api-method method-post">POST</span>
+                    <code class="endpoint-url">/api/chat</code>
+                    <p class="endpoint-description">Process chat messages and generate AI responses</p>
+                    
+                    <h4>Request Body</h4>
+                    <table class="param-table">
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                        <tr>
+                            <td>message<span class="required">*</span></td>
+                            <td>string</td>
+                            <td>The user's message</td>
+                        </tr>
+                        <tr>
+                            <td>tools<span class="optional">optional</span></td>
+                            <td>object</td>
+                            <td>Additional tools and options</td>
+                        </tr>
+                    </table>
+
+                    <div class="code-example">
+                        <div class="code-example-title">Example Request</div>
+                        <div class="code-block">
+                            <pre>curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "What's the weather like?",
+    "tools": {
+      "isVoiceInput": false
+    }
+  }'</pre>
+                        </div>
+                    </div>
+
+                    <h4>Response</h4>
+                    <div class="response-example">
+                        <pre>{
+  "success": true,
+  "data": {
+    "messages": {
+      "user": {
+        "type": "user",
+        "message": "What's the weather like?"
+      },
+      "assistant": {
+        "type": "ai",
+        "message": "Let me check the weather for you..."
+      }
+    },
+    "timing": {
+      "total": 1.23,
+      "client_init": 0.1,
+      "analysis": 0.3,
+      "function_calls": [...],
+      "final_response": 0.5
+    }
+  }
+}</pre>
+                    </div>
+                </div>
+
+                <div class="api-endpoint">
+                    <span class="api-method method-post">POST</span>
+                    <code class="endpoint-url">/api/speech</code>
+                    <p class="endpoint-description">Process voice input and convert to text</p>
+                    
+                    <h4>Request Body</h4>
+                    <table class="param-table">
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                        <tr>
+                            <td>audio_data<span class="required">*</span></td>
+                            <td>string</td>
+                            <td>Base64 encoded audio data</td>
+                        </tr>
+                    </table>
+
+                    <div class="code-example">
+                        <div class="code-example-title">Example Request</div>
+                        <div class="code-block">
+                            <pre>curl -X POST http://localhost:8000/api/speech \
+  -H "Content-Type: application/json" \
+  -d '{
+    "audio_data": "base64_encoded_audio_data"
+  }'</pre>
+                        </div>
+                    </div>
+
+                    <h4>Response</h4>
+                    <div class="response-example">
+                        <pre>{
+  "success": true,
+  "data": {
+    "text": "Transcribed text from audio"
+  }
+}</pre>
+                    </div>
+                </div>
+
+                <div class="error-codes">
+                    <h4>Error Codes</h4>
+                    <table>
+                        <tr>
+                            <th>Error Code</th>
+                            <th>Description</th>
+                            <th>Solution</th>
+                        </tr>
+                        <tr>
+                            <td class="error-code">401</td>
+                            <td>Unauthorized</td>
+                            <td>Check your Groq API key</td>
+                        </tr>
+                        <tr>
+                            <td class="error-code">400</td>
+                            <td>Bad Request</td>
+                            <td>Check request parameters</td>
+                        </tr>
+                        <tr>
+                            <td class="error-code">500</td>
+                            <td>Internal Server Error</td>
+                            <td>Check server logs</td>
+                        </tr>
+                    </table>
+                </div>
+            </section>
+
+            <section id="features" class="doc-section">
+                <h2>Features</h2>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <i class="fas fa-brain"></i>
+                        <h4>Natural Language Processing</h4>
+                        <p>Advanced AI-powered understanding of user queries and commands using Groq API</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-microphone"></i>
+                        <h4>Voice Interaction</h4>
+                        <p>Voice input and text-to-speech capabilities for hands-free operation</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-sliders-h"></i>
+                        <h4>System Control</h4>
+                        <p>Control system settings like volume, brightness, and launch applications</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-folder"></i>
+                        <h4>File Management</h4>
+                        <p>Browse, search, and manage files through natural language commands</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-play"></i>
+                        <h4>Media Control</h4>
+                        <p>Control media playback and manage media files</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-sticky-note"></i>
+                        <h4>Note Taking</h4>
+                        <p>Create and manage notes through voice or text commands</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="security" class="doc-section">
+                <h2>Security</h2>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <i class="fas fa-shield-alt"></i>
+                        <h4>API Security</h4>
+                        <p>Secure API key storage in environment variables</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-database"></i>
+                        <h4>Data Storage</h4>
+                        <p>Local storage of chat history with IndexedDB</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-check-circle"></i>
+                        <h4>Input Validation</h4>
+                        <p>Input validation and sanitization</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-file-alt"></i>
+                        <h4>File Security</h4>
+                        <p>Secure file system operations</p>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-user-shield"></i>
+                        <h4>Access Control</h4>
+                        <p>Permission-based system control</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="troubleshooting" class="doc-section">
+                <h2>Troubleshooting</h2>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <i class="fas fa-microphone-slash"></i>
+                        <h4>Voice Recognition Issues</h4>
+                        <ul>
+                            <li>Check microphone permissions</li>
+                            <li>Ensure proper audio input device is selected</li>
+                            <li>Check internet connection for Google Speech API</li>
+                        </ul>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-robot"></i>
+                        <h4>AI Response Issues</h4>
+                        <ul>
+                            <li>Verify Groq API key is valid</li>
+                            <li>Check internet connection</li>
+                            <li>Review server logs for errors</li>
+                        </ul>
+                    </div>
+                    <div class="feature-card">
+                        <i class="fas fa-cogs"></i>
+                        <h4>System Control Issues</h4>
+                        <ul>
+                            <li>Check application permissions</li>
+                            <li>Verify system settings access</li>
+                            <li>Review function execution logs</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h3>Getting Help</h3>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <i class="fas fa-terminal"></i>
+                        <h4>Log Locations</h4>
+                        <ul>
+                            <li>Frontend logs: Check browser console</li>
+                            <li>Backend logs: Check server.log and api_handler.log</li>
+                            <li>System logs: Check application logs in your OS</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div class="mobile-nav-toggle">
+        <i class="fas fa-bars"></i>
+    </div>
+
+    <script src="../assets/js/script.js"></script>
+    <script>
+        // Theme Toggle Functionality
+        const themeToggle = document.querySelector('.theme-toggle');
+        const themeIcon = document.querySelector('.theme-icon');
+
+        // Check for saved theme preference, otherwise use system preference
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme) {
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+        } else {
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const theme = prefersDark ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+            updateThemeIcon(theme);
+        }
+
+        // Theme toggle click handler
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        });
+
+        // Update theme icon based on current theme
+        function updateThemeIcon(theme) {
+            if (theme === 'dark') {
+                themeIcon.src = '../assets/sun-solid.svg';
+                themeIcon.alt = 'Light Mode';
+            } else {
+                themeIcon.src = '../assets/moon-solid.svg';
+                themeIcon.alt = 'Dark Mode';
+            }
+        }
+    </script>
+</body>
+</html> 

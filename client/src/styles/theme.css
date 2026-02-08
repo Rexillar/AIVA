@@ -1,0 +1,48 @@
+:root {
+  --background: #ffffff;
+  --foreground: #000000;
+  --border: #e5e7eb;
+}
+
+.dark {
+  --background: #1f2937;
+  --foreground: #ffffff;
+  --border: #374151;
+}
+
+/* Theme transitions */
+.theme-transition {
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+
+/* Base theme styles */
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+/* Dark mode overrides */
+.dark body {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+/* Component theme styles */
+.card {
+  background-color: var(--background);
+  border: 1px solid var(--border);
+}
+
+.input {
+  background-color: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+
+.button {
+  background-color: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}

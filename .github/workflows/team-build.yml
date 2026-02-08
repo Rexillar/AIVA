@@ -1,0 +1,53 @@
+name: Distribution (Team)
+
+on:
+  push:
+    branches: [ "dev" ]
+  workflow_dispatch:
+
+jobs:
+  # ------------------------------------------------------------------
+  # Build & Push "Bleeding Edge" Images
+  # ------------------------------------------------------------------
+  team-distribution:
+    name: Build Team Images
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Login to Docker Hub
+        if: env.DOCKER_USERNAME != ''
+        uses: docker/login-action@v3
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_TOKEN }}
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Create Dummy Secrets
+        run: |
+           touch server/.env.secret
+           echo "SERVICE_KEY=dummy" > server/.env.secret
+
+      - name: Build & Push (Team/Dev Tags)
+        run: |
+          # Build using the launcher configuration
+          docker compose -f launcher/docker-compose.yml build
+          
+          # Tag and Push - IF credentials exist
+          if [ -n "${{ secrets.DOCKER_USERNAME }}" ]; then
+            # Retag for team/dev usage
+            docker tag aiva-backend:latest ${{ secrets.DOCKER_USERNAME }}/aiva-backend:dev
+            docker tag aiva-frontend:latest ${{ secrets.DOCKER_USERNAME }}/aiva-frontend:dev
+            
+            # Push
+            docker push ${{ secrets.DOCKER_USERNAME }}/aiva-backend:dev
+            docker push ${{ secrets.DOCKER_USERNAME }}/aiva-frontend:dev
+          else
+            echo "Skipping push: No Docker credentials found"
+          fi

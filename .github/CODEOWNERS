@@ -1,0 +1,28 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+#   AIVA CODE OWNERSHIP
+# ═══════════════════════════════════════════════════════════════════════════════
+# This file defines the owners of various parts of the codebase.
+# These owners are automatically requested for review when files in their
+# directories are modified in a Pull Request.
+
+# ── Global Fallback ──
+*                   @mohitrajsinhjadeja
+
+# ── Service Ownership ──
+# Backend Architecture & Logic
+/server/            @mohitrajsinhjadeja
+
+# Frontend UI/UX
+/client/            @mohitrajsinhjadeja
+
+# ── Infrastructure & DevOps ──
+# CI/CD Workflows
+/.github/           @mohitrajsinhjadeja
+
+# Containerization & Deployment
+/docker/            @mohitrajsinhjadeja
+/launcher/          @mohitrajsinhjadeja
+/docker-hub/        @mohitrajsinhjadeja
+
+# Documentation
+/docs/              @mohitrajsinhjadeja

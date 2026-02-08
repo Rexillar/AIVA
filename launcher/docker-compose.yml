@@ -1,0 +1,153 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+#         █████╗ ██╗██╗   ██╗ █████╗
+#        ██╔══██╗██║██║   ██║██╔══██╗
+#        ███████║██║██║   ██║███████║
+#        ██╔══██║██║╚██╗ ██╔╝██╔══██║
+#        ██║  ██║██║ ╚████╔╝ ██║  ██║
+#        ╚═╝  ╚═╝╚═╝  ╚═══╝  ╚═╝  ╚═╝
+#
+#    ──◈──  A I V A  ::  A I   V I R T U A L   A S S I S T A N T  ──◈──
+#
+#    ◉  Docker Compose Configuration
+#    ◉  Production-Ready Multi-Container Setup
+#
+#                           ⟡  A I V A  ⟡
+#
+#                      © 2026 Mohitraj Jadeja
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Backend Service
+  # ═══════════════════════════════════════════════════════════════════════════
+  backend:
+    build:
+      context: ../server
+      dockerfile: Dockerfile
+    container_name: aiva-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-5000}:5000"
+
+    # Load ALL environment variables from .env.secret
+    env_file:
+      - ../server/.env.secret # NOT committed to git - contains sensitive credentials
+
+    # Override specific variables if needed
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=5000
+
+    volumes:
+      # Persistent data
+      - backend-uploads:/app/uploads
+      - backend-logs:/app/logs
+      # Config files (for GCP credentials, etc.)
+      - ../server/config:/app/config:ro
+
+    networks:
+      - aiva-network
+
+    depends_on:
+      - redis
+
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:5000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Frontend Service
+  # ═══════════════════════════════════════════════════════════════════════════
+  frontend:
+    build:
+      context: ../client
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:5000/api
+    container_name: aiva-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    environment:
+      - VITE_API_URL=http://localhost:5000/api
+    networks:
+      - aiva-network
+    depends_on:
+      - backend
+    healthcheck:
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Redis Cache Service (Optional but recommended)
+  # ═══════════════════════════════════════════════════════════════════════════
+  redis:
+    image: redis:7-alpine
+    container_name: aiva-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - aiva-network
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-aiva_redis_pass}
+    healthcheck:
+      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # MinIO Object Storage (Optional - alternative to GCS)
+  # ═══════════════════════════════════════════════════════════════════════════
+  minio:
+    image: minio/minio:latest
+    container_name: aiva-minio
+    restart: unless-stopped
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio-data:/data
+    networks:
+      - aiva-network
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles:
+      - with-minio # Only start if explicitly requested
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Volumes - Persistent Data Storage
+# ═══════════════════════════════════════════════════════════════════════════
+volumes:
+  backend-uploads:
+    driver: local
+  backend-logs:
+    driver: local
+  redis-data:
+    driver: local
+  minio-data:
+    driver: local
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Networks - Container Communication
+# ═══════════════════════════════════════════════════════════════════════════
+networks:
+  aiva-network:
+    driver: bridge
