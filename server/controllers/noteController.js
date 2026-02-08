@@ -76,7 +76,7 @@ export const getWorkspaceNotes = asyncHandler(async (req, res) => {
       { isTrashed: { $exists: false } },
       { isTrashed: null }
     ]
-  }).sort({ updatedAt: -1 });
+  }).sort({ createdAt: 1 });
 
   // Fix any notes that might have undefined isArchived
   const fixedNotes = notes.map(note => ({
@@ -302,7 +302,7 @@ export const listNotes = asyncHandler(async (req, res) => {
 
   const notes = await Note.find(query)
     .populate('creator', 'name email avatar')
-    .sort({ updatedAt: -1 });
+    .sort({ createdAt: 1 });
 
   res.json({
     status: true,
@@ -337,7 +337,7 @@ export const searchNotes = asyncHandler(async (req, res) => {
     isTrashed: { $ne: true }
   })
     .populate('creator', 'name email avatar')
-    .sort({ updatedAt: -1 });
+    .sort({ createdAt: 1 });
 
   res.json({
     status: true,
