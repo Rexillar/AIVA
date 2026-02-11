@@ -38,7 +38,14 @@
 
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
-import crypto from 'crypto';
+import cb from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { FieldEncryption } from './encryption.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -54,12 +61,48 @@ const textColor = "#ffffff"; // White text for contrast
 class TokenManager {
   constructor() {
     this.tokens = new Map();
+    this.dataFile = path.join(__dirname, '../data/tokens.json');
+    this.ensureDataDir();
+    this.loadTokens();
     this.cleanupInterval = setInterval(() => this.cleanupExpiredTokens(), 5 * 60 * 1000);
-    console.log('TokenManager initialized with persistent storage');
+    console.log('TokenManager initialized with persistent storage at:', this.dataFile);
+  }
+
+  ensureDataDir() {
+    const dir = path.dirname(this.dataFile);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  }
+
+  loadTokens() {
+    try {
+      if (fs.existsSync(this.dataFile)) {
+        const data = fs.readFileSync(this.dataFile, 'utf8');
+        const parsed = JSON.parse(data);
+        // Convert array back to Map
+        this.tokens = new Map(parsed);
+        console.log(`Loaded ${this.tokens.size} tokens from storage`);
+      }
+    } catch (error) {
+      console.error('Failed to load tokens:', error.message);
+      // Construct a new map if loading fails
+      this.tokens = new Map();
+    }
+  }
+
+  saveTokens() {
+    try {
+      // Convert Map to array for JSON serialization
+      const data = JSON.stringify(Array.from(this.tokens.entries()), null, 2);
+      fs.writeFileSync(this.dataFile, data, 'utf8');
+    } catch (error) {
+      console.error('Failed to save tokens:', error.message);
+    }
   }
 
   generateToken() {
-    const buffer = crypto.randomBytes(32);
+    const buffer = cb.randomBytes(32);
     const token = buffer.toString('base64url');
     console.log('Generated new token:', token.substring(0, 10) + '...');
     return token;
@@ -68,7 +111,7 @@ class TokenManager {
   generateOTP() {
     const min = 100000;
     const max = 999999;
-    const otp = crypto.randomInt(min, max + 1).toString().padStart(6, '0');
+    const otp = cb.randomInt(min, max + 1).toString().padStart(6, '0');
     console.log('Generated new OTP:', otp);
     return otp;
   }
@@ -112,6 +155,7 @@ class TokenManager {
 
     // Store in Map
     this.tokens.set(key, tokenData);
+    this.saveTokens(); // Persist changes
 
     // Debug: Print all stored tokens
     console.log('Current stored tokens:', this.debugTokens());
@@ -176,6 +220,7 @@ class TokenManager {
     if (Date.now() > tokenData.expiresAt) {
       console.error('Token validation failed: Token expired');
       this.tokens.delete(key);
+      this.saveTokens();
       return {
         isValid: false,
         reason: 'Token has expired. Please request a new one.'
@@ -199,6 +244,7 @@ class TokenManager {
 
       if (tokenData.attempts >= 3) {
         this.tokens.delete(key);
+        this.saveTokens();
         return {
           isValid: false,
           reason: 'Too many invalid attempts. Please request a new reset link.'
@@ -213,6 +259,7 @@ class TokenManager {
 
     // Successful validation - clean up the token
     this.tokens.delete(key);
+    this.saveTokens();
     return { isValid: true };
   }
 
@@ -220,14 +267,20 @@ class TokenManager {
     if (!email) return;
     const key = `${type}_${email.toLowerCase()}`;
     this.tokens.delete(key);
+    this.saveTokens();
   }
 
   cleanupExpiredTokens() {
     const now = Date.now();
+    let changed = false;
     for (const [key, data] of this.tokens.entries()) {
       if (now > data.expiresAt) {
         this.tokens.delete(key);
+        changed = true;
       }
+    }
+    if (changed) {
+      this.saveTokens();
     }
   }
 
@@ -337,8 +390,8 @@ class EmailService {
     this.transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: GMAIL_USER,
-        pass: GMAIL_PASS
+        user: FieldEncryption.decrypt(GMAIL_USER),
+        pass: FieldEncryption.decrypt(GMAIL_PASS)
       },
       pool: true,
       maxConnections: 5,

@@ -106,6 +106,20 @@ export const habitApiSlice = createApi({
       }),
       invalidatesTags: ["Habit"],
     }),
+    restoreHabit: builder.mutation({
+      query: (id) => ({
+        url: `/habits/${id}/restore`,
+        method: "PUT",
+      }),
+      invalidatesTags: ["Habit", "Trash"],
+    }),
+    permanentlyDeleteHabit: builder.mutation({
+      query: (id) => ({
+        url: `/habits/${id}/permanent`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["Habit", "Trash"],
+    }),
     getHabitsDueToday: builder.query({
       query: (arg) => `/habits/due-today?workspaceId=${arg.workspaceId}`,
       transformResponse: (response) => response.data,
@@ -140,17 +154,15 @@ export const habitApiSlice = createApi({
     }),
     archiveHabit: builder.mutation({
       query: (id) => ({
-        url: `/habits/${id}`,
+        url: `/habits/${id}/archive`,
         method: "PATCH",
-        body: { archived: true },
       }),
       invalidatesTags: ["Habit"],
     }),
     pauseHabit: builder.mutation({
       query: (id) => ({
-        url: `/habits/${id}`,
+        url: `/habits/${id}/pause`,
         method: "PATCH",
-        body: { paused: true },
       }),
       invalidatesTags: ["Habit"],
     }),
@@ -196,6 +208,8 @@ export const {
   useCreateHabitMutation,
   useUpdateHabitMutation,
   useDeleteHabitMutation,
+  useRestoreHabitMutation,
+  usePermanentlyDeleteHabitMutation,
   useGetHabitsDueTodayQuery,
   useToggleHabitCompletionMutation,
   useGetUserHabitAnalyticsQuery,

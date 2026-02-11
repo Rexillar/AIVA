@@ -138,6 +138,39 @@ export const noteApiSlice = apiSlice.injectEndpoints({
       ],
     }),
 
+    // Restore a note
+    restoreNote: builder.mutation({
+      query: (noteId) => ({
+        url: `${NOTES_URL}/${noteId}/restore`,
+        method: "PUT",
+      }),
+      transformResponse: (response) => ({
+        status: response.status,
+        data: response.data,
+      }),
+      invalidatesTags: (result, error, noteId) => [
+        { type: "Note", id: noteId },
+        "Note",
+        "Trash"
+      ],
+    }),
+
+    // Permanently delete a note
+    permanentlyDeleteNote: builder.mutation({
+      query: (noteId) => ({
+        url: `${NOTES_URL}/${noteId}/permanent`,
+        method: "DELETE",
+      }),
+      transformResponse: (response) => ({
+        status: response.status,
+        message: response.message,
+      }),
+      invalidatesTags: (result, error) => [
+        "Note",
+        "Trash"
+      ],
+    }),
+
     // Share a note with other users
     shareNote: builder.mutation({
       query: ({ noteId, users }) => ({
@@ -163,5 +196,7 @@ export const {
   useCreateNoteMutation,
   useUpdateNoteMutation,
   useDeleteNoteMutation,
+  useRestoreNoteMutation,
+  usePermanentlyDeleteNoteMutation,
   useShareNoteMutation,
 } = noteApiSlice;

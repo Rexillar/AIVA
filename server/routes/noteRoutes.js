@@ -42,6 +42,8 @@ import {
   createNote,
   updateNote,
   deleteNote,
+  restoreNote,
+  permanentlyDeleteNote,
   shareNote
 } from '../controllers/noteController.js';
 import { protect } from '../middlewares/authMiddleware.js';
@@ -60,6 +62,9 @@ router.route('/:id')
   .get(getNote)
   .put(updateNote)
   .delete(deleteNote);
+
+router.put('/:id/restore', restoreNote);
+router.delete('/:id/permanent', permanentlyDeleteNote);
 
 router.post('/:id/share', shareNote);
 

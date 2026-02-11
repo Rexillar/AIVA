@@ -1,548 +1,459 @@
-/*═══════════════════════════════════════════════════════════════════════════════
 
-        █████╗ ██╗██╗   ██╗ █████╗
-       ██╔══██╗██║██║   ██║██╔══██╗
-       ███████║██║██║   ██║███████║
-       ██╔══██║██║╚██╗ ██╔╝██╔══██║
-       ██║  ██║██║ ╚████╔╝ ██║  ██║
-       ╚═╝  ╚═╝╚═╝  ╚═══╝  ╚═╝  ╚═╝
-
-   ──◈──  A I V A  ::  A I   V I R T U A L   A S S I S T A N T  ──◈──
-
-   ◉  Deterministic Execution System
-   ◉  Rule-Bound • State-Aware • Non-Emotive
-
-   ⟁  SYSTEM LAYER : FRONTEND CORE
-   ⟁  DOMAIN       : PAGE COMPONENTS
-
-   ⟁  PURPOSE      : Implement complete page views and layouts
-
-   ⟁  WHY          : Organized application navigation and structure
-
-   ⟁  WHAT         : Full page React components with routing
-
-   ⟁  TECH STACK   : React • Redux • Vite
-   ⟁  CRYPTO       : N/A
-   ⟁  TRUST LEVEL  : MEDIUM
-   ⟁  DOCS : /docs/frontend/pages.md
-
-   ⟁  USAGE RULES  : Manage routing • Handle data • User experience
-
-        "Pages rendered. Navigation smooth. User journey optimized."
-
-                          ⟡  A I V A  ⟡
-
-                     © 2026 Mohitraj Jadeja
-
-═══════════════════════════════════════════════════════════════════════════════*/
-
-import clsx from "clsx";
-import React, { useState, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import {
   MdDelete,
-  MdRestore,
-  MdKeyboardArrowDown,
-  MdKeyboardArrowUp,
-  MdKeyboardDoubleArrowUp,
+  MdOutlineRestore,
   MdSearch,
-  MdFilterList,
+  MdTaskAlt,
+  MdEventNote,
+  MdBrush,
+  MdLoop,
+  MdGridView,
+  MdViewList,
   MdCheckBox,
   MdCheckBoxOutlineBlank,
+  MdFilterList,
 } from "react-icons/md";
-import Title from "../components/shared/display/Title";
-import Button from "../components/shared/buttons/Button";
-import { TASK_TYPE } from "../utils/constants";
-import ConfirmationDialog from "../components/shared/dialog/Dialogs";
-import {
-  useDeleteTaskMutation,
-  useGetWorkspaceTasksQuery,
-  useRestoreTaskMutation,
-} from "../redux/slices/api/taskApiSlice";
-import Loading from "../components/shared/feedback/Loader";
-import { toast } from "sonner";
 import { useSelector } from "react-redux";
+import { useGetTrashItemsQuery } from "../redux/slices/api/trashApiSlice";
+import {
+  useRestoreTaskMutation,
+  useDeleteTaskMutation,
+} from "../redux/slices/api/taskApiSlice";
+import {
+  useRestoreNoteMutation,
+  usePermanentlyDeleteNoteMutation,
+} from "../redux/slices/api/noteApiSlice";
+import {
+  useRestoreHabitMutation,
+  usePermanentlyDeleteHabitMutation,
+} from "../redux/slices/api/habitApiSlice";
+import {
+  restoreCanvas,
+  permanentDeleteCanvas,
+} from "../services/canvasService";
+import { toast } from "sonner";
+import clsx from "clsx";
+import Loading from "../components/shared/feedback/Loader";
+import Button from "../components/shared/buttons/Button";
+import ConfirmationDialog from "../components/shared/dialog/Dialogs";
 
 const Trash = () => {
-  const [openDialog, setOpenDialog] = useState(false);
-  const [msg, setMsg] = useState(null);
-  const [type, setType] = useState("delete");
-  const [selected, setSelected] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [sortBy, setSortBy] = useState("date");
-  const [sortOrder, setSortOrder] = useState("desc");
-  const [selectedItems, setSelectedItems] = useState(new Set());
+  const { user } = useSelector((state) => state.auth);
+  // Robust workspace selection: current workspace or first available
+  const currentWorkspace = user?.workspaces?.[0];
 
-  const { currentWorkspace } = useSelector((state) => state.workspace);
-
-  const { data, isLoading, error } = useGetWorkspaceTasksQuery(
-    {
-      workspaceId: currentWorkspace?._id,
-      filter: "trash",
-      includeArchived: true,
-      includeDeleted: true,
-      status: "all",
-    },
+  const {
+    data,
+    isLoading,
+    refetch,
+  } = useGetTrashItemsQuery(
+    { workspaceId: currentWorkspace?._id },
     {
       skip: !currentWorkspace?._id,
       refetchOnMountOrArgChange: true,
-      pollingInterval: 30000,
-    },
+    }
   );
 
-  const [deleteTask] = useDeleteTaskMutation();
+  const trashItems = data?.data || [];
+  const trashCount = data?.count || 0;
+
   const [restoreTask] = useRestoreTaskMutation();
+  const [deleteTask] = useDeleteTaskMutation();
+  const [restoreNote] = useRestoreNoteMutation();
+  const [deleteNote] = usePermanentlyDeleteNoteMutation();
+  const [restoreHabit] = useRestoreHabitMutation();
+  const [deleteHabit] = usePermanentlyDeleteHabitMutation();
 
-  // Reset selected items when data changes
-  useEffect(() => {
-    setSelectedItems(new Set());
-  }, [data]);
+  const [selectedItems, setSelectedItems] = useState([]);
+  const [activeTab, setActiveTab] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState("list"); // 'list' or 'grid'
 
-  // Filter and sort tasks
-  const filteredTasks = React.useMemo(() => {
-    if (!data?.tasks) return [];
+  // Dialog State
+  const [openDialog, setOpenDialog] = useState(false);
+  const [dialogConfig, setDialogConfig] = useState({
+    type: "", // 'restore' | 'delete' | 'restoreSelected' | 'deleteSelected'
+    msg: "",
+    itemId: null,
+    itemType: null,
+  });
 
-    let tasks = data.tasks.filter(
-      (task) => task.isArchived === true || task.isDeleted === true,
-    );
-
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      tasks = tasks.filter(
-        (task) =>
-          task.title.toLowerCase().includes(term) ||
-          task.description?.toLowerCase().includes(term) ||
-          task.stage.toLowerCase().includes(term),
-      );
-    }
-
-    return [...tasks].sort((a, b) => {
-      switch (sortBy) {
-        case "title":
-          return sortOrder === "asc"
-            ? a.title.localeCompare(b.title)
-            : b.title.localeCompare(a.title);
-        case "stage":
-          return sortOrder === "asc"
-            ? a.stage.localeCompare(b.stage)
-            : b.stage.localeCompare(a.stage);
-        case "date":
-        default:
-          return sortOrder === "asc"
-            ? new Date(a.updatedAt || a.date) - new Date(b.updatedAt || b.date)
-            : new Date(b.updatedAt || b.date) - new Date(a.updatedAt || a.date);
-      }
+  // Filter items based on tab and search
+  const filteredItems = useMemo(() => {
+    return trashItems.filter((item) => {
+      const matchesTab = activeTab === "all" || item.type === activeTab;
+      const matchesSearch =
+        item.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.description?.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesTab && matchesSearch;
     });
-  }, [data?.tasks, searchTerm, sortBy, sortOrder]);
+  }, [trashItems, activeTab, searchQuery]);
+
+  const handleSelectItem = (id) => {
+    setSelectedItems((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
 
   const handleSelectAll = () => {
-    if (selectedItems.size === filteredTasks.length) {
-      setSelectedItems(new Set());
+    if (selectedItems.length === filteredItems.length) {
+      setSelectedItems([]);
     } else {
-      setSelectedItems(new Set(filteredTasks.map((task) => task._id)));
+      setSelectedItems(filteredItems.map((item) => item._id));
     }
   };
 
-  const handleSelectItem = (taskId) => {
-    const newSelected = new Set(selectedItems);
-    if (newSelected.has(taskId)) {
-      newSelected.delete(taskId);
-    } else {
-      newSelected.add(taskId);
-    }
-    setSelectedItems(newSelected);
-  };
-
-  const handleBulkOperationClick = (operation) => {
-    if (selectedItems.size === 0) {
-      toast.error(`No items selected for ${operation}`);
-      return;
-    }
-
-    // Set up dialog
-    setType(operation === "restore" ? "restoreSelected" : "deleteSelected");
-    setMsg(
-      operation === "restore"
-        ? `Do you want to restore ${selectedItems.size} selected ${selectedItems.size === 1 ? "task" : "tasks"
-        }?`
-        : `Do you want to permanently delete ${selectedItems.size} selected ${selectedItems.size === 1 ? "task" : "tasks"
-        }?`,
-    );
-    setOpenDialog(true);
-  };
-
-  const handleOperation = async () => {
+  const executeRestore = async (id, type) => {
     try {
-      if (type === "deleteSelected") {
-        // Bulk delete
-        const deletePromises = Array.from(selectedItems).map(taskId =>
-          deleteTask({
-            taskId,
-            workspaceId: currentWorkspace._id,
-          }).unwrap()
-        );
-        await Promise.all(deletePromises);
-        toast.success(`${selectedItems.size} tasks deleted permanently`);
-        setSelectedItems(new Set());
-      } else if (type === "restoreSelected") {
-        // Bulk restore
-        const restorePromises = Array.from(selectedItems).map(taskId =>
-          restoreTask({
-            taskId,
-            workspaceId: currentWorkspace._id,
-          }).unwrap()
-        );
-        await Promise.all(restorePromises);
-        toast.success(`${selectedItems.size} tasks restored successfully`);
-        setSelectedItems(new Set());
-      } else if (type.includes("delete")) {
-        await deleteTask({
-          taskId: selected,
-          workspaceId: currentWorkspace._id,
-        }).unwrap();
-        toast.success("Task deleted permanently");
-      } else {
+      if (type === "task") {
         await restoreTask({
-          taskId: selected,
-          workspaceId: currentWorkspace._id,
+          taskId: id,
+          workspaceId: currentWorkspace?._id,
         }).unwrap();
-        toast.success("Task restored successfully");
+      } else if (type === "note") {
+        await restoreNote(id).unwrap();
+      } else if (type === "habit") {
+        await restoreHabit(id).unwrap();
+      } else if (type === "canvas") {
+        await restoreCanvas(id);
+        refetch(); // Manually refetch for canvas
       }
-      setOpenDialog(false);
-    } catch (err) {
-      toast.error(err?.data?.message || "Operation failed");
+      return true;
+    } catch (error) {
+      console.error(`Failed to restore ${type}:`, error);
+      return false;
     }
   };
 
-  useEffect(() => {
-    if (!openDialog) {
-      setSelected("");
-      setMsg(null);
+  const executeDelete = async (id, type) => {
+    try {
+      if (type === "task") {
+        await deleteTask({
+          taskId: id,
+          workspaceId: currentWorkspace?._id,
+        }).unwrap();
+      } else if (type === "note") {
+        await deleteNote(id).unwrap();
+      } else if (type === "habit") {
+        await deleteHabit(id).unwrap();
+      } else if (type === "canvas") {
+        await permanentDeleteCanvas(id);
+        refetch();
+      }
+      return true;
+    } catch (error) {
+      console.error(`Failed to delete ${type}:`, error);
+      return false;
     }
-  }, [openDialog]);
+  };
 
-  const deleteClick = (taskId) => {
-    setSelected(taskId);
-    setType("delete");
-    setMsg("Are you sure you want to permanently delete this task?");
+  const confirmAction = async () => {
+    const { type, itemId, itemType } = dialogConfig;
+
+    if (type === "restore") {
+      const success = await executeRestore(itemId, itemType);
+      if (success) {
+        toast.success("Item restored successfully");
+        setSelectedItems((prev) => prev.filter((i) => i !== itemId));
+      } else {
+        toast.error("Failed to restore item");
+      }
+    } else if (type === "delete") {
+      const success = await executeDelete(itemId, itemType);
+      if (success) {
+        toast.success("Item permanently deleted");
+        setSelectedItems((prev) => prev.filter((i) => i !== itemId));
+      } else {
+        toast.error("Failed to delete item");
+      }
+    } else if (type === "restoreSelected") {
+      let successCount = 0;
+      for (const id of selectedItems) {
+        const item = trashItems.find((i) => i._id === id);
+        if (item) {
+          const success = await executeRestore(id, item.type);
+          if (success) successCount++;
+        }
+      }
+      toast.success(`Restored ${successCount} items`);
+      setSelectedItems([]);
+    } else if (type === "deleteSelected") {
+      let successCount = 0;
+      for (const id of selectedItems) {
+        const item = trashItems.find((i) => i._id === id);
+        if (item) {
+          const success = await executeDelete(id, item.type);
+          if (success) successCount++;
+        }
+      }
+      toast.success(`Deleted ${successCount} items`);
+      setSelectedItems([]);
+    }
+
+    setOpenDialog(false);
+  };
+
+  const openConfirmation = (actionType, id = null, itemType = null) => {
+    let msg = "";
+    if (actionType === "restore") msg = "Are you sure you want to restore this item?";
+    else if (actionType === "delete") msg = "Are you sure you want to permanently delete this item? This action cannot be undone.";
+    else if (actionType === "restoreSelected") msg = `Are you sure you want to restore ${selectedItems.length} selected items?`;
+    else if (actionType === "deleteSelected") msg = `Are you sure you want to permanently delete ${selectedItems.length} selected items? This action cannot be undone.`;
+
+    setDialogConfig({
+      type: actionType,
+      msg,
+      itemId: id,
+      itemType: itemType
+    });
     setOpenDialog(true);
   };
 
-  const restoreClick = (taskId) => {
-    setSelected(taskId);
-    setType("restore");
-    setMsg("Are you sure you want to restore this task?");
-    setOpenDialog(true);
+  const getIcon = (type) => {
+    switch (type) {
+      case "task":
+        return <MdTaskAlt className="text-blue-500" size={20} />;
+      case "note":
+        return <MdEventNote className="text-yellow-500" size={20} />;
+      case "canvas":
+        return <MdBrush className="text-purple-500" size={20} />;
+      case "habit":
+        return <MdLoop className="text-green-500" size={20} />;
+      default:
+        return <MdDelete className="text-gray-400" size={20} />;
+    }
   };
 
-  if (isLoading)
-    return (
-      <div className="py-10">
-        <Loading />
-      </div>
-    );
+  const getTypeLabel = (type) => {
+    if (!type) return "Unknown";
+    return type.charAt(0).toUpperCase() + type.slice(1);
+  };
 
-  if (error) return <div>Error loading tasks. Please try again later.</div>;
-
-  if (!currentWorkspace) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300">
-            No Workspace Selected
-          </h2>
-          <p className="mt-2 text-gray-500 dark:text-gray-400">
-            Please select a workspace to view trash
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  const TableHeader = () => (
-    <thead className="border-b border-gray-600/30">
-      <tr className="text-left">
-        <th className="py-3 px-4 text-gray-200 font-medium">
-          <button
-            onClick={handleSelectAll}
-            className="flex items-center gap-2 hover:text-gray-100"
-            title={
-              selectedItems.size === filteredTasks.length
-                ? "Deselect all"
-                : "Select all"
-            }
-          >
-            {selectedItems.size === filteredTasks.length ? (
-              <MdCheckBox size={20} />
-            ) : (
-              <MdCheckBoxOutlineBlank size={20} />
-            )}
-          </button>
-        </th>
-        <th className="py-3 px-4 text-gray-200 font-medium">
-          <button
-            onClick={() => {
-              if (sortBy === "title") {
-                setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-              } else {
-                setSortBy("title");
-                setSortOrder("asc");
-              }
-            }}
-            className="flex items-center gap-1 hover:text-gray-100"
-          >
-            Task Title
-            {sortBy === "title" && (
-              <MdKeyboardArrowDown
-                className={clsx("transition-transform", {
-                  "rotate-180": sortOrder === "asc",
-                })}
-              />
-            )}
-          </button>
-        </th>
-        <th className="py-3 px-4 text-gray-200 font-medium">
-          <button
-            onClick={() => {
-              if (sortBy === "stage") {
-                setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-              } else {
-                setSortBy("stage");
-                setSortOrder("asc");
-              }
-            }}
-            className="flex items-center gap-1 hover:text-gray-100"
-          >
-            Stage
-            {sortBy === "stage" && (
-              <MdKeyboardArrowDown
-                className={clsx("transition-transform", {
-                  "rotate-180": sortOrder === "asc",
-                })}
-              />
-            )}
-          </button>
-        </th>
-        <th className="py-3 px-4 text-gray-200 font-medium">
-          <button
-            onClick={() => {
-              if (sortBy === "date") {
-                setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-              } else {
-                setSortBy("date");
-                setSortOrder("asc");
-              }
-            }}
-            className="flex items-center gap-1 hover:text-gray-100"
-          >
-            Modified On
-            {sortBy === "date" && (
-              <MdKeyboardArrowDown
-                className={clsx("transition-transform", {
-                  "rotate-180": sortOrder === "asc",
-                })}
-              />
-            )}
-          </button>
-        </th>
-        <th className="py-3 px-4 text-gray-200 font-medium text-right">
-          Actions
-        </th>
-      </tr>
-    </thead>
-  );
-
-  const TableRow = ({ item }) => (
-    <tr className="border-b border-gray-700/30 hover:bg-gray-700/20 transition-colors">
-      <td className="py-3 px-4">
-        <button
-          onClick={() => handleSelectItem(item._id)}
-          className="flex items-center justify-center"
-        >
-          {selectedItems.has(item._id) ? (
-            <MdCheckBox size={20} className="text-blue-500" />
-          ) : (
-            <MdCheckBoxOutlineBlank size={20} className="text-gray-400" />
-          )}
-        </button>
-      </td>
-      <td className="py-3 px-4">
-        <div className="flex items-center gap-3">
-          <div
-            className={clsx("w-3 h-3 rounded-full", TASK_TYPE[item.stage])}
-          />
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <p className="line-clamp-1 text-gray-200">{item?.title}</p>
-              {/* Google Tasks indicator */}
-              {(item.source === 'google-tasks' || item.isGoogleSynced) && (
-                <span className="flex-shrink-0" title="Google Task">
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                  </svg>
-                </span>
-              )}
-              {/* User avatar */}
-              {(item.creator || item.googleAccount) && (
-                <img
-                  src={
-                    item.creator?.avatar ||
-                    item.googleAccount?.avatar ||
-                    item.googleAccount?.picture ||
-                    `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                      item.creator?.name ||
-                      item.googleAccount?.name ||
-                      item.googleAccount?.email ||
-                      'User'
-                    )}&background=random`
-                  }
-                  alt={item.creator?.name || item.googleAccount?.name || 'User'}
-                  className="w-5 h-5 rounded-full flex-shrink-0"
-                  title={`${item.source === 'google-tasks' ? 'Google account: ' : 'Created by '}${item.creator?.name || item.googleAccount?.name || item.googleAccount?.email || 'User'}`}
-                />
-              )}
-            </div>
-            {item.description && (
-              <p className="text-sm text-gray-400 line-clamp-1 mt-0.5">
-                {item.description}
-              </p>
-            )}
-          </div>
-        </div>
-      </td>
-      <td className="py-3 px-4">
-        <span
-          className={clsx(
-            "px-2.5 py-1 rounded-full text-xs font-medium capitalize",
-            {
-              "bg-yellow-500/20 text-yellow-300": item.stage === "todo",
-              "bg-blue-500/20 text-blue-300": item.stage === "in_progress",
-              "bg-purple-500/20 text-purple-300": item.stage === "review",
-              "bg-green-500/20 text-green-300": item.stage === "completed",
-            },
-          )}
-        >
-          {item?.stage?.replace("_", " ")}
-        </span>
-      </td>
-      <td className="py-3 px-4 text-sm text-gray-400">
-        {new Date(item?.updatedAt || item?.date).toLocaleDateString("en-US", {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })}
-      </td>
-      <td className="py-3 px-4">
-        <div className="flex gap-2 justify-end">
-          <Button
-            icon={<MdRestore size={18} />}
-            variant="secondary"
-            size="sm"
-            className="!p-2 text-gray-400 hover:text-blue-400 bg-gray-800 hover:bg-gray-700 border-gray-700"
-            onClick={() => restoreClick(item._id)}
-            tooltip="Restore task"
-          />
-          <Button
-            icon={<MdDelete size={18} />}
-            variant="secondary"
-            size="sm"
-            className="!p-2 text-gray-400 hover:text-red-400 bg-gray-800 hover:bg-gray-700 border-gray-700"
-            onClick={() => deleteClick(item._id)}
-            tooltip="Delete permanently"
-          />
-        </div>
-      </td>
-    </tr>
-  );
+  if (isLoading) return <Loading />;
 
   return (
-    <div className="w-full h-full p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <Title title="Trash" className="text-gray-200 !text-2xl" />
-          {filteredTasks?.length > 0 && (
-            <span className="px-2 py-1 text-xs font-medium text-gray-400 bg-gray-800 rounded-full">
-              {filteredTasks.length}{" "}
-              {filteredTasks.length === 1 ? "item" : "items"}
-            </span>
-          )}
+    <div className="w-full h-full flex flex-col bg-white dark:bg-[#0F1117] overflow-hidden">
+      {/* Header */}
+      <div className="flex-none px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+            <MdDelete className="text-red-500" /> Bin ({trashCount})
+          </h1>
+          <div className="flex items-center gap-2">
+            {selectedItems.length > 0 && (
+              <>
+                <Button
+                  label={`Restore (${selectedItems.length})`}
+                  icon={<MdOutlineRestore />}
+                  className="bg-blue-600 text-white hover:bg-blue-700"
+                  onClick={() => openConfirmation("restoreSelected")}
+                />
+                <Button
+                  label={`Delete (${selectedItems.length})`}
+                  icon={<MdDelete />}
+                  className="bg-red-600 text-white hover:bg-red-700"
+                  onClick={() => openConfirmation("deleteSelected")}
+                />
+              </>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-4">
-          {/* Search input */}
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search tasks..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <MdSearch
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              size={20}
-            />
+
+        <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+          {/* Tabs */}
+          <div className="flex p-1 bg-gray-100 dark:bg-gray-800 rounded-lg overflow-x-auto max-w-full">
+            {["all", "task", "note", "canvas", "habit"].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={clsx(
+                  "px-4 py-2 rounded-md text-sm font-medium transition-all capitalize whitespace-nowrap",
+                  activeTab === tab
+                    ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                )}
+              >
+                {tab === "all" ? "All Items" : tab + "s"}
+              </button>
+            ))}
           </div>
 
-          {selectedItems.size > 0 && (
-            <div className="flex items-center gap-2">
-              <Button
-                label="Restore Selected"
-                icon={<MdRestore size={18} />}
-                variant="secondary"
-                size="sm"
-                className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border-blue-500/30"
-                onClick={() => handleBulkOperationClick("restore")}
-              />
-              <Button
-                label="Delete Selected"
-                icon={<MdDelete size={18} />}
-                variant="danger"
-                size="sm"
-                className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border-red-500/30"
-                onClick={() => handleBulkOperationClick("delete")}
+          {/* Search and View Toggle */}
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <div className="relative flex-1 md:w-64">
+              <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search trash..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white"
               />
             </div>
-          )}
+            <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('list')}
+                className={clsx("p-2 rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200", viewMode === 'list' ? "bg-white dark:bg-gray-700 shadow text-blue-600 dark:text-blue-400" : "")}
+              >
+                <MdViewList size={20} />
+              </button>
+              <button
+                onClick={() => setViewMode('grid')}
+                className={clsx("p-2 rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200", viewMode === 'grid' ? "bg-white dark:bg-gray-700 shadow text-blue-600 dark:text-blue-400" : "")}
+              >
+                <MdGridView size={20} />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="bg-gray-900/50 rounded-lg border border-gray-800">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <TableHeader />
-            <tbody>
-              {filteredTasks?.length > 0 ? (
-                filteredTasks.map((task) => (
-                  <TableRow key={task._id} item={task} />
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="5" className="py-8 text-center text-gray-400">
-                    <div className="flex flex-col items-center gap-2">
-                      <MdDelete size={24} />
-                      <p>No items in trash</p>
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50 dark:bg-[#0F1117]">
+        {filteredItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-gray-400">
+            <MdDelete className="text-6xl mb-4 opacity-20" />
+            <p className="text-lg">Trash is empty</p>
+            {activeTab !== 'all' && <p className="text-sm">No items found in {activeTab}</p>}
+          </div>
+        ) : (
+          <div className={clsx(
+            "gap-4",
+            viewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" : "flex flex-col"
+          )}>
+            {/* Header Row for List View */}
+            {viewMode === 'list' && (
+              <div className="grid grid-cols-12 gap-4 px-4 py-3 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2 items-center">
+                <div className="col-span-1 flex items-center justify-center">
+                  <button onClick={handleSelectAll} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                    {selectedItems.length === filteredItems.length && filteredItems.length > 0 ? (
+                      <MdCheckBox size={20} className="text-blue-600" />
+                    ) : (
+                      <MdCheckBoxOutlineBlank size={20} />
+                    )}
+                  </button>
+                </div>
+                <div className="col-span-5">Name</div>
+                <div className="col-span-2">Type</div>
+                <div className="col-span-2">Deleted At</div>
+                <div className="col-span-2 text-right">Actions</div>
+              </div>
+            )}
+
+            {filteredItems.map((item) => (
+              <div
+                key={item._id}
+                className={clsx(
+                  "group bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-md transition-all",
+                  viewMode === 'list' ? "grid grid-cols-12 gap-4 items-center p-4" : "p-4 flex flex-col gap-3 h-full relative"
+                )}
+              >
+                {/* Checkbox (List: Col 1, Grid: Absolute Top Left) */}
+                <div className={clsx(viewMode === 'list' ? "col-span-1 flex justify-center" : "absolute top-4 left-4 z-10")}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleSelectItem(item._id); }}
+                    className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                  >
+                    {selectedItems.includes(item._id) ? (
+                      <MdCheckBox size={20} className="text-blue-600" />
+                    ) : (
+                      <MdCheckBoxOutlineBlank size={20} />
+                    )}
+                  </button>
+                </div>
+
+                {/* Main Content */}
+                <div className={clsx(viewMode === 'list' ? "col-span-5" : "pt-8")}>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 flex-shrink-0">
+                      {getIcon(item.type)}
                     </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                    <div className="min-w-0">
+                      <h3 className="font-medium text-gray-900 dark:text-white line-clamp-1 truncate" title={item.title}>
+                        {item.title || "Untitled"}
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-1 truncate" title={item.description}>
+                        {item.description || "No description"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Type & Date (List View) */}
+                {viewMode === 'list' && (
+                  <>
+                    <div className="col-span-2">
+                      <span className={clsx("px-2.5 py-1 rounded-full text-xs font-medium capitalize bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300")}>
+                        {getTypeLabel(item.type)}
+                      </span>
+                    </div>
+                    <div className="col-span-2 text-sm text-gray-500 dark:text-gray-400">
+                      {new Date(item.trashedAt).toLocaleDateString()}
+                    </div>
+                  </>
+                )}
+
+                {/* Grid View Footer */}
+                {viewMode === 'grid' && (
+                  <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center text-sm text-gray-500">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-md self-start">{getTypeLabel(item.type)}</span>
+                      <span className="text-xs opacity-70">{new Date(item.trashedAt).toLocaleDateString()}</span>
+                    </div>
+
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => openConfirmation("restore", item._id, item.type)}
+                        className="p-2 rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 hover:text-blue-500 transition"
+                        title="Restore"
+                      >
+                        <MdOutlineRestore size={18} />
+                      </button>
+                      <button
+                        onClick={() => openConfirmation("delete", item._id, item.type)}
+                        className="p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 hover:text-red-500 transition"
+                        title="Delete Permanently"
+                      >
+                        <MdDelete size={18} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions (List View) */}
+                {viewMode === 'list' && (
+                  <div className="col-span-2 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => openConfirmation("restore", item._id, item.type)}
+                      className="p-1.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 transition"
+                      title="Restore"
+                    >
+                      <MdOutlineRestore size={20} />
+                    </button>
+                    <button
+                      onClick={() => openConfirmation("delete", item._id, item.type)}
+                      className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 transition"
+                      title="Delete Permanently"
+                    >
+                      <MdDelete size={20} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Confirmation Dialog */}
       <ConfirmationDialog
         open={openDialog}
         setOpen={setOpenDialog}
-        title={type.includes("restore") ? "Restore Task" : "Delete Task"}
-        message={msg}
-        confirmLabel={type.includes("restore") ? "Restore" : "Delete"}
-        confirmColor={type.includes("restore") ? "blue" : "red"}
-        onClick={handleOperation}
+        title={dialogConfig.type.includes("restore") ? "Restore Items" : "Delete Items Forever"}
+        message={dialogConfig.msg}
+        confirmLabel={dialogConfig.type.includes("restore") ? "Restore" : "Delete Forever"}
+        confirmColor={dialogConfig.type.includes("restore") ? "blue" : "red"}
+        onClick={confirmAction}
       />
     </div>
   );

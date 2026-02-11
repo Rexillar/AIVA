@@ -62,6 +62,17 @@ const canvasSchema = new Schema({
     ref: 'Workspace',
     default: null
   },
+  // Unified Trash System
+  isTrashed: {
+    type: Boolean,
+    default: false
+  },
+  trashedAt: Date,
+  trashedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  // Deprecated: kept for backward compatibility
   isDeleted: {
     type: Boolean,
     default: false
@@ -77,8 +88,8 @@ const canvasSchema = new Schema({
 });
 
 // Index for efficient queries
-canvasSchema.index({ owner: 1, isDeleted: 1 });
-canvasSchema.index({ workspace: 1, isDeleted: 1 });
+canvasSchema.index({ owner: 1, isTrashed: 1 });
+canvasSchema.index({ workspace: 1, isTrashed: 1 });
 canvasSchema.index({ createdAt: -1 });
 
 // Virtual for checking if canvas is active

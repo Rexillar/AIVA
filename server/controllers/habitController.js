@@ -134,7 +134,8 @@ export const getWorkspaceHabits = asyncHandler(async (req, res) => {
 
   const query = {
     workspace: workspaceId,
-    isArchived: isArchived === 'true'
+    isArchived: isArchived === 'true',
+    isTrashed: false, // Default to not showing trashed items
   };
 
   // Filter by visibility
@@ -188,7 +189,8 @@ export const getUserHabits = asyncHandler(async (req, res) => {
   const habits = await Habit.find({
     user: req.user._id,
     workspace: workspaceId,
-    isArchived: isArchived === 'true'
+    isArchived: isArchived === 'true',
+    isTrashed: false
   }).sort({ createdAt: -1 });
 
   res.status(200).json({
@@ -460,11 +462,70 @@ export const deleteHabit = asyncHandler(async (req, res) => {
     throw new Error('Not authorized to delete this habit');
   }
 
+  // Soft delete
+  habit.isTrashed = true;
+  habit.trashedAt = new Date();
+  habit.trashedBy = req.user._id;
+
+  await habit.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Habit moved to trash successfully'
+  });
+});
+
+// @desc    Restore habit from trash
+// @route   PUT /api/habits/:id/restore
+// @access  Private
+export const restoreHabit = asyncHandler(async (req, res) => {
+  const habit = await Habit.findById(req.params.id);
+
+  if (!habit) {
+    res.status(404);
+    throw new Error('Habit not found');
+  }
+
+  // Check if user is the habit owner
+  if (habit.user.toString() !== req.user._id.toString()) {
+    res.status(403);
+    throw new Error('Not authorized to restore this habit');
+  }
+
+  habit.isTrashed = false;
+  habit.trashedAt = null;
+  habit.trashedBy = null;
+
+  await habit.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Habit restored successfully',
+    data: habit
+  });
+});
+
+// @desc    Permanently delete habit
+// @route   DELETE /api/habits/:id/permanent
+// @access  Private
+export const permanentlyDeleteHabit = asyncHandler(async (req, res) => {
+  const habit = await Habit.findById(req.params.id);
+
+  if (!habit) {
+    res.status(404);
+    throw new Error('Habit not found');
+  }
+
+  if (habit.user.toString() !== req.user._id.toString()) {
+    res.status(403);
+    throw new Error('Not authorized to permanently delete this habit');
+  }
+
   await habit.deleteOne();
 
   res.status(200).json({
     success: true,
-    message: 'Habit deleted successfully'
+    message: 'Habit permanently deleted'
   });
 });
 

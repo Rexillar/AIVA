@@ -79,7 +79,16 @@ const getCanvases = asyncHandler(async (req, res) => {
   // Temporary: use a dummy user ID for testing
   const dummyUserId = '507f1f77bcf86cd799439011';
 
-  let query = { owner: dummyUserId, isDeleted: false }; // req.user._id
+  let query = {
+    owner: dummyUserId, // req.user._id 
+    $or: [
+      { isTrashed: false },
+      { isTrashed: { $exists: false } },
+      { isTrashed: null }
+    ],
+    // Backward compatibility
+    isDeleted: { $ne: true }
+  };
 
   if (workspaceId) {
     query.workspace = workspaceId;
@@ -107,7 +116,13 @@ const getCanvasById = asyncHandler(async (req, res) => {
   const canvas = await Canvas.findOne({
     _id: req.params.id,
     owner: dummyUserId, // req.user._id
-    isDeleted: false
+    $or: [
+      { isTrashed: false },
+      { isTrashed: { $exists: false } },
+      { isTrashed: null }
+    ],
+    // Backward compatibility
+    isDeleted: { $ne: true }
   })
     .populate('owner', 'name email')
     .populate('workspace', 'name');
@@ -135,7 +150,8 @@ const updateCanvas = asyncHandler(async (req, res) => {
   const canvas = await Canvas.findOne({
     _id: req.params.id,
     owner: dummyUserId, // req.user._id
-    isDeleted: false
+    isTrashed: { $ne: true },
+    isDeleted: { $ne: true }
   });
 
   if (!canvas) {
@@ -169,7 +185,8 @@ const deleteCanvas = asyncHandler(async (req, res) => {
   const canvas = await Canvas.findOne({
     _id: req.params.id,
     owner: dummyUserId, // req.user._id
-    isDeleted: false
+    isTrashed: { $ne: true },
+    isDeleted: { $ne: true }
   });
 
   if (!canvas) {
@@ -177,8 +194,13 @@ const deleteCanvas = asyncHandler(async (req, res) => {
     throw new Error('Canvas not found');
   }
 
+  canvas.isTrashed = true;
+  canvas.trashedAt = new Date();
+
+  // Backward compatibility
   canvas.isDeleted = true;
   canvas.deletedAt = new Date();
+
   await canvas.save();
 
   res.status(200).json({
@@ -220,7 +242,11 @@ const restoreCanvas = asyncHandler(async (req, res) => {
   const canvas = await Canvas.findOne({
     _id: req.params.id,
     owner: dummyUserId, // req.user._id
-    isDeleted: true
+    // Check for either flag
+    $or: [
+      { isTrashed: true },
+      { isDeleted: true }
+    ]
   });
 
   if (!canvas) {
@@ -228,6 +254,10 @@ const restoreCanvas = asyncHandler(async (req, res) => {
     throw new Error('Canvas not found');
   }
 
+  canvas.isTrashed = false;
+  canvas.trashedAt = null;
+
+  // Backward compatibility
   canvas.isDeleted = false;
   canvas.deletedAt = null;
   await canvas.save();
@@ -251,7 +281,10 @@ const getDeletedCanvases = asyncHandler(async (req, res) => {
 
   const canvases = await Canvas.find({
     owner: dummyUserId, // req.user._id
-    isDeleted: true
+    $or: [
+      { isTrashed: true },
+      { isDeleted: true }
+    ]
   })
     .populate('owner', 'name email')
     .populate('workspace', 'name')

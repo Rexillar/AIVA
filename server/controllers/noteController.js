@@ -238,6 +238,67 @@ export const deleteNote = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc    Restore a note from trash
+// @route   PUT /api/notes/:id/restore
+// @access  Private
+export const restoreNote = asyncHandler(async (req, res) => {
+  const noteId = req.params.id;
+  const userId = req.user._id;
+
+  const note = await Note.findById(noteId);
+  if (!note) {
+    res.status(404);
+    throw new Error('Note not found');
+  }
+
+  // Check edit permission
+  const canEdit = await note.canEdit(userId);
+  if (!canEdit) {
+    res.status(403);
+    throw new Error('You do not have permission to restore this note');
+  }
+
+  // Restore note
+  note.isTrashed = false;
+  note.trashedAt = undefined;
+  note.trashedBy = undefined;
+  await note.save();
+
+  res.json({
+    status: true,
+    message: 'Note restored successfully',
+    data: note
+  });
+});
+
+// @desc    Permanently delete a note
+// @route   DELETE /api/notes/:id/permanent
+// @access  Private
+export const permanentlyDeleteNote = asyncHandler(async (req, res) => {
+  const noteId = req.params.id;
+  const userId = req.user._id;
+
+  const note = await Note.findById(noteId);
+  if (!note) {
+    res.status(404);
+    throw new Error('Note not found');
+  }
+
+  // Check edit permission
+  const canEdit = await note.canEdit(userId);
+  if (!canEdit) {
+    res.status(403);
+    throw new Error('You do not have permission to delete this note');
+  }
+
+  await note.deleteOne();
+
+  res.json({
+    status: true,
+    message: 'Note permanently deleted'
+  });
+});
+
 // @desc    Share a note with users
 // @route   POST /api/notes/:id/share
 // @access  Private

@@ -281,6 +281,17 @@ const taskSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
+  // Unified Trash System
+  isTrashed: {
+    type: Boolean,
+    default: false
+  },
+  trashedAt: Date,
+  trashedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  // Deprecated: kept for backward compatibility during migration
   isDeleted: {
     type: Boolean,
     default: false
@@ -352,7 +363,7 @@ taskSchema.pre('save', function (next) {
 });
 
 // Indexes for better query performance
-taskSchema.index({ workspace: 1, isDeleted: 1 });
+taskSchema.index({ workspace: 1, isTrashed: 1 });
 taskSchema.index({ workspace: 1, stage: 1 });
 taskSchema.index({ assignees: 1 });
 taskSchema.index({ dueDate: 1 });

@@ -49,6 +49,8 @@ import {
   archiveHabit,
   pauseHabit,
   deleteHabit,
+  restoreHabit,
+  permanentlyDeleteHabit,
   addHabitNote,
   deleteHabitNote,
   getHabitHistory,
@@ -87,6 +89,8 @@ router.route('/:id')
 router.post('/:id/complete', toggleHabitCompletion);
 router.patch('/:id/archive', archiveHabit);
 router.patch('/:id/pause', pauseHabit);
+router.put('/:id/restore', restoreHabit);
+router.delete('/:id/permanent', permanentlyDeleteHabit);
 
 // Habit data routes
 router.get('/:id/statistics', getHabitStatistics);

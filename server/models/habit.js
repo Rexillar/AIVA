@@ -201,6 +201,15 @@ const habitSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  isTrashed: {
+    type: Boolean,
+    default: false
+  },
+  trashedAt: Date,
+  trashedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
   tags: [{
     type: String,
     trim: true
@@ -220,6 +229,7 @@ const habitSchema = new mongoose.Schema({
 });
 
 // Indexes for better query performance
+habitSchema.index({ user: 1, workspace: 1, isTrashed: 1 });
 habitSchema.index({ user: 1, workspace: 1, isArchived: 1 });
 habitSchema.index({ user: 1, isActive: 1 });
 habitSchema.index({ workspace: 1, isArchived: 1 });

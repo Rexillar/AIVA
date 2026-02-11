@@ -397,7 +397,13 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   // Get tasks for the workspace
   const tasks = await Task.find({
     workspace: workspaceId,
-    isTrashed: false
+    $or: [
+      { isTrashed: false },
+      { isTrashed: { $exists: false } },
+      { isTrashed: null }
+    ],
+    // Backward compatibility check
+    isDeleted: { $ne: true }
   });
 
   // Calculate total subtasks
@@ -517,8 +523,18 @@ const getTasks = asyncHandler(async (req, res) => {
       workspace: workspaceId,
       isGoogleSynced: { $ne: true },
       ...(req.query.filter === 'trash'
-        ? { $or: [{ isArchived: true }, { isDeleted: true }] }
-        : { isDeleted: false, isArchived: false })
+        ? {
+          $or: [
+            { isArchived: true },
+            { isTrashed: true },
+            { isDeleted: true } // Backward compatibility
+          ]
+        }
+        : {
+          isTrashed: { $ne: true },
+          isDeleted: { $ne: true }, // Backward compatibility
+          isArchived: false
+        })
     })
       .populate('creator', 'name email avatar')
       .populate('assignees', 'name email avatar')
@@ -768,7 +784,15 @@ const moveToTrash = asyncHandler(async (req, res) => {
       {
         $set: {
           isArchived: true,
+          // Unified Trash fields
+          isTrashed: true,
+          trashedAt: new Date(),
+          trashedBy: req.user._id,
+          // Backward compatibility
           isDeleted: true,
+          deletedAt: new Date(),
+          deletedBy: req.user._id,
+
           archivedAt: new Date(),
           archivedBy: req.user._id
         }
@@ -824,56 +848,6 @@ const postActivity = asyncHandler(async (req, res) => {
   await task.save();
 
   res.status(201).json({ success: true, data: activity });
-});
-
-// @desc    Restore a task from trash
-// @route   POST /api/tasks/:id/restore
-// @access  Private
-const restoreTask = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { workspaceId } = req.body;
-
-  if (!id || !workspaceId) {
-    return res.status(400).json({
-      success: false,
-      message: 'Task ID and workspace ID are required'
-    });
-  }
-
-  const task = await Task.findById(id);
-  if (!task) {
-    return res.status(404).json({
-      success: false,
-      message: 'Task not found'
-    });
-  }
-
-  if (!task.isArchived && !task.isDeleted) {
-    return res.status(400).json({
-      success: false,
-      message: 'Task is not in trash'
-    });
-  }
-
-  // Restore the task
-  task.isArchived = false;
-  task.isDeleted = false;
-  task.trashedAt = null;
-  task.trashedBy = null;
-
-  await task.save();
-
-  // Fetch the updated task with populated fields
-  const updatedTask = await Task.findById(id)
-    .populate('creator', 'name email avatar')
-    .populate('assignees', 'name email avatar')
-    .populate('workspace', 'name type');
-
-  res.status(200).json({
-    success: true,
-    message: 'Task restored successfully',
-    data: updatedTask
-  });
 });
 
 // @desc    Delete a subtask
@@ -1992,3 +1966,72 @@ export {
   archiveCompletedTasks,
   restoreArchivedTasks
 };
+
+// @desc    Restore task from trash
+// @route   PUT /api/tasks/:id/restore
+// @access  Private
+const restoreTask = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { workspaceId } = req.query;
+
+  if (!id || !workspaceId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Task ID and workspace ID are required'
+    });
+  }
+
+  const task = await Task.findOne({
+    _id: id,
+    workspace: workspaceId
+  });
+
+  if (!task) {
+    return res.status(404).json({
+      success: false,
+      message: 'Task not found'
+    });
+  }
+
+  // Restore linked ExternalTask if exists
+  if (task.isGoogleSynced) {
+    const GoogleIntegration = (await import('../models/googleIntegration.js')).default;
+    const ExternalTask = (await import('../models/externalTask.js')).default;
+
+    const externalTask = await ExternalTask.findOne({
+      workspaceId,
+      aivaTaskId: id
+    });
+
+    if (externalTask) {
+      externalTask.isTrash = false;
+      externalTask.isDeleted = false;
+      externalTask.deletedAt = null;
+      externalTask.syncStatus = 'synced';
+      await externalTask.save();
+    }
+  }
+
+  task.isTrashed = false;
+  task.trashedAt = null;
+  task.trashedBy = null;
+  task.isDeleted = false; // Backward compatibility
+  task.deletedAt = null;
+  task.deletedBy = null;
+  task.isArchived = false; // Usually restoring means unarchiving too? Or should we keep archive state? 
+  // For now assuming restore makes it active.
+  task.archivedAt = null;
+  task.archivedBy = null;
+
+  await task.save();
+
+  res.json({
+    success: true,
+    message: 'Task restored successfully',
+    data: task
+  });
+});
+
+
+
+

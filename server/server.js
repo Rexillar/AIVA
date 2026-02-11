@@ -60,7 +60,11 @@ import workspaceRoutes from './routes/workspaceRoutes.js';
 import canvasRoutes from './routes/canvasRoutes.js';
 import quotaRoutes from './routes/quotaRoutes.js';
 import googleIntegrationRoutes from './routes/googleIntegrationRoutes.js';
+import googleIntegrationRoutes from './routes/googleIntegrationRoutes.js';
 import driveRoutes from './routes/driveRoutes.js';
+import trashRoutes from './routes/trashRoutes.js';
+import habitRoutes from './routes/habitRoutes.js';
+import noteRoutes from './routes/noteRoutes.js';
 import { reminderService } from './services/reminderService.js';
 import { checkGCSConnection } from './services/gcsService.js';
 import { quotaManager } from './middlewares/advancedRateLimitMiddleware.js';
@@ -127,6 +131,9 @@ app.use('/api/canvas', canvasRoutes);
 app.use('/api/quotas', quotaRoutes);
 app.use('/api/google', googleIntegrationRoutes);
 app.use('/api/drive', driveRoutes);
+app.use('/api/trash', trashRoutes);
+app.use('/api/habits', habitRoutes);
+app.use('/api/notes', noteRoutes);
 
 // Socket.IO real-time collaboration
 io.on('connection', (socket) => {
