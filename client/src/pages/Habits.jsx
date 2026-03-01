@@ -43,7 +43,7 @@ import {
   useCreateHabitMutation,
   useUpdateHabitMutation,
   useDeleteHabitMutation,
-  useArchiveHabitMutation,
+  useTrashHabitMutation,
   usePauseHabitMutation,
 } from "../redux/slices/api/habitApiSlice";
 import { HabitList } from "../components/habits/HabitList";
@@ -56,7 +56,7 @@ import {
   FaBolt,
   FaChevronDown,
   FaChevronUp,
-  FaArchive,
+  FaTrash,
   FaPlay,
   FaCalendarAlt,
 } from "react-icons/fa";
@@ -75,7 +75,6 @@ const Habits = () => {
     frequency: "daily",
   });
   const [filters, setFilters] = useState({
-    isArchived: false,
     category: undefined,
     isActive: true,
     visibility: "all",
@@ -95,7 +94,7 @@ const Habits = () => {
   const [createHabit, { isLoading: isCreating }] = useCreateHabitMutation();
   const [updateHabit, { isLoading: isUpdating }] = useUpdateHabitMutation();
   const [deleteHabit] = useDeleteHabitMutation();
-  const [archiveHabit] = useArchiveHabitMutation();
+  const [trashHabit] = useTrashHabitMutation();
   const [pauseHabit] = usePauseHabitMutation();
 
   const handleCreateOrUpdate = async (habitData) => {
@@ -154,11 +153,12 @@ const Habits = () => {
     }
   };
 
-  const handleArchive = async (habitId) => {
+  const handleTrash = async (habitId) => {
     try {
-      await archiveHabit(habitId).unwrap();
+      await trashHabit(habitId).unwrap();
+      toast.success("Habit moved to trash");
     } catch (error) {
-      console.error("Failed to archive habit:", error);
+      console.error("Failed to trash habit:", error);
     }
   };
 
@@ -258,11 +258,10 @@ const Habits = () => {
           <div className="flex items-center space-x-3">
             <button
               onClick={() => setShowAnalytics(!showAnalytics)}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                showAnalytics
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${showAnalytics
                   ? "bg-indigo-600 text-white"
                   : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600"
-              }`}
+                }`}
             >
               <FaChartBar />
               <span>Analytics</span>
@@ -385,29 +384,7 @@ const Habits = () => {
 
             {/* Toggle Filters */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
-                <div className="flex items-center space-x-2">
-                  <FaArchive className="text-gray-500" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Show Archived
-                  </span>
-                </div>
-                <div
-                  className={`relative inline-block w-10 h-6 transition duration-200 ease-in-out rounded-full ${filters.isArchived ? "bg-indigo-600" : "bg-gray-300 dark:bg-gray-500"}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={filters.isArchived}
-                    onChange={(e) =>
-                      setFilters({ ...filters, isArchived: e.target.checked })
-                    }
-                    className="sr-only"
-                  />
-                  <span
-                    className={`absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ease-in-out ${filters.isArchived ? "translate-x-4" : "translate-x-0"}`}
-                  ></span>
-                </div>
-              </label>
+              {/* Removed Show Archived toggle as it's now handled in Trash page */}
 
               <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
                 <div className="flex items-center space-x-2">
@@ -467,7 +444,7 @@ const Habits = () => {
             isLoading={isLoading}
             onEdit={handleEdit}
             onDelete={handleDelete}
-            onArchive={handleArchive}
+            onTrash={handleTrash}
             onPause={handlePause}
           />
         )}

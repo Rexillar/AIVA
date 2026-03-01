@@ -38,7 +38,6 @@
 import asyncHandler from 'express-async-handler';
 import Habit from '../models/habit.js';
 import { Workspace } from '../models/workspace.js';
-import GamificationService from '../services/gamificationService.js';
 
 // Validation helper
 const validateHabitInput = (data) => {
@@ -114,7 +113,7 @@ export const createHabit = asyncHandler(async (req, res) => {
 // @access  Private
 export const getWorkspaceHabits = asyncHandler(async (req, res) => {
   const { workspaceId } = req.params;
-  const { isArchived = false, isActive, category, visibility } = req.query;
+  const { isTrash = false, isActive, category, visibility } = req.query;
 
   // Verify workspace access
   const workspace = await Workspace.findById(workspaceId);
@@ -134,7 +133,8 @@ export const getWorkspaceHabits = asyncHandler(async (req, res) => {
 
   const query = {
     workspace: workspaceId,
-    isArchived: isArchived === 'true'
+    isTrash: isTrash === 'true',
+    isDeleted: false
   };
 
   // Filter by visibility
@@ -178,7 +178,7 @@ export const getWorkspaceHabits = asyncHandler(async (req, res) => {
 // @route   GET /api/habits/user
 // @access  Private
 export const getUserHabits = asyncHandler(async (req, res) => {
-  const { workspaceId, isArchived = false } = req.query;
+  const { workspaceId } = req.query;
 
   if (!workspaceId) {
     res.status(400);
@@ -188,7 +188,8 @@ export const getUserHabits = asyncHandler(async (req, res) => {
   const habits = await Habit.find({
     user: req.user._id,
     workspace: workspaceId,
-    isArchived: isArchived === 'true'
+    isTrash: false,
+    isDeleted: false
   }).sort({ createdAt: -1 });
 
   res.status(200).json({
@@ -314,29 +315,10 @@ export const toggleHabitCompletion = asyncHandler(async (req, res) => {
 
   await habit.save();
 
-  // Award XP if habit was just completed today
-  let rewards = null;
-  if (isToday && !wasCompletedToday && habit.isCompletedToday) {
-    // Calculate streak multiplier (1 + streak bonus)
-    let streakMultiplier = 1;
-    if (habit.currentStreak >= 7) streakMultiplier = 2;
-    else if (habit.currentStreak >= 30) streakMultiplier = 3;
-    else if (habit.currentStreak >= 3) streakMultiplier = 1.5;
-
-    rewards = await GamificationService.awardHabitCompletionXP(req.user._id, streakMultiplier);
-
-    // Check for new achievements
-    const newAchievements = await GamificationService.checkAchievements(req.user._id);
-    if (newAchievements.length > 0) {
-      rewards.newAchievements = newAchievements;
-    }
-  }
-
   res.status(200).json({
     success: true,
     message: 'Habit completion toggled',
-    data: habit,
-    rewards
+    data: habit
   });
 });
 
@@ -406,7 +388,8 @@ export const getUserHabitAnalytics = asyncHandler(async (req, res) => {
   const habits = await Habit.find({
     user: req.user._id,
     workspace: workspaceId,
-    isArchived: false
+    isTrash: false,
+    isDeleted: false
   });
 
   // Calculate completion rate for last 7 days
@@ -621,18 +604,7 @@ export const completeTodayHabit = asyncHandler(async (req, res) => {
   habit.toggleCompletion(today, note);
   await habit.save();
 
-  // Award XP if habit was just completed
-  if (habit.isCompletedToday) {
-    try {
-      await GamificationService.awardXP(
-        req.user._id,
-        'habit_completed',
-        { habitId: habit._id, streak: habit.currentStreak }
-      );
-    } catch (error) {
-      console.error('Gamification error:', error);
-    }
-  }
+
 
   res.status(200).json({
     success: true,
@@ -672,16 +644,7 @@ export const completeMultipleHabitsToday = asyncHandler(async (req, res) => {
       await habit.save();
       completedHabits.push(habit);
 
-      // Award XP
-      try {
-        await GamificationService.awardXP(
-          req.user._id,
-          'habit_completed',
-          { habitId: habit._id, streak: habit.currentStreak }
-        );
-      } catch (error) {
-        console.error('Gamification error:', error);
-      }
+
     }
   }
 
@@ -818,10 +781,10 @@ export const pauseMultipleHabits = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc    Archive habit
-// @route   PUT /api/habits/:id/archive
+// @desc    Move habit to trash
+// @route   PUT /api/habits/:id/trash
 // @access  Private
-export const archiveHabit = asyncHandler(async (req, res) => {
+export const trashHabit = asyncHandler(async (req, res) => {
   const habit = await Habit.findById(req.params.id);
 
   if (!habit) {
@@ -831,24 +794,53 @@ export const archiveHabit = asyncHandler(async (req, res) => {
 
   if (habit.user.toString() !== req.user._id.toString()) {
     res.status(403);
-    throw new Error('Not authorized to archive this habit');
+    throw new Error('Not authorized to trash this habit');
   }
 
-  habit.isArchived = true;
-  habit.archivedAt = new Date();
+  habit.isTrash = true;
+  habit.trashedAt = new Date();
+  habit.trashedBy = req.user._id;
   await habit.save();
 
   res.status(200).json({
     success: true,
-    message: 'Habit archived successfully',
+    message: 'Habit moved to trash',
     data: habit
   });
 });
 
-// @desc    Archive multiple habits
-// @route   POST /api/habits/batch/archive
+// @desc    Restore habit from trash
+// @route   PUT /api/habits/:id/restore
 // @access  Private
-export const archiveMultipleHabits = asyncHandler(async (req, res) => {
+export const restoreHabit = asyncHandler(async (req, res) => {
+  const habit = await Habit.findById(req.params.id);
+
+  if (!habit) {
+    res.status(404);
+    throw new Error('Habit not found');
+  }
+
+  if (habit.user.toString() !== req.user._id.toString()) {
+    res.status(403);
+    throw new Error('Not authorized to restore this habit');
+  }
+
+  habit.isTrash = false;
+  habit.trashedAt = null;
+  habit.trashedBy = null;
+  await habit.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Habit restored from trash',
+    data: habit
+  });
+});
+
+// @desc    Trash multiple habits
+// @route   POST /api/habits/batch/trash
+// @access  Private
+export const trashMultipleHabits = asyncHandler(async (req, res) => {
   const { habitIds, workspaceId } = req.body;
 
   if (!habitIds || !Array.isArray(habitIds) || habitIds.length === 0) {
@@ -863,13 +855,13 @@ export const archiveMultipleHabits = asyncHandler(async (req, res) => {
       user: req.user._id
     },
     {
-      $set: { isArchived: true, archivedAt: new Date() }
+      $set: { isTrash: true, trashedAt: new Date(), trashedBy: req.user._id }
     }
   );
 
   res.status(200).json({
     success: true,
-    message: `Archived ${result.modifiedCount} habit(s)`,
+    message: `Moved ${result.modifiedCount} habit(s) to trash`,
     count: result.modifiedCount
   });
 });

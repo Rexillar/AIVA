@@ -55,7 +55,8 @@ export const sendHabitReminders = async () => {
       'reminder.days': dayName,
       isActive: true,
       isPaused: false,
-      isArchived: false
+      isTrash: false,
+      isDeleted: false
     }).populate('user', 'name email');
 
     for (const habit of habits) {
@@ -110,7 +111,8 @@ export const checkBrokenStreaks = async () => {
     const habits = await Habit.find({
       isActive: true,
       isPaused: false,
-      isArchived: false,
+      isTrash: false,
+      isDeleted: false,
       currentStreak: { $gt: 0 }
     }).populate('user', 'name email');
 
@@ -195,7 +197,8 @@ export const getHabitInsights = async (userId, workspaceId) => {
     const habits = await Habit.find({
       user: userId,
       workspace: workspaceId,
-      isArchived: false
+      isTrash: false,
+      isDeleted: false
     });
 
     const insights = {

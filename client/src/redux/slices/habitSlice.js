@@ -44,7 +44,6 @@ const initialState = {
   habitFilters: {
     category: "all",
     isActive: true,
-    isArchived: false,
   },
   habitView: "grid", // 'grid' or 'list'
   selectedDate: new Date().toISOString(),
