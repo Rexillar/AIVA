@@ -396,6 +396,11 @@ const WorkspaceNavLinks = ({ workspace }) => {
           icon: FaStickyNote,
         },
         {
+          name: "Habits",
+          path: `/workspace/${workspace._id}/habits`,
+          icon: FaCheckCircle,
+        },
+        {
           name: "Canvas",
           path: `/workspace/${workspace._id}/canvas`,
           icon: FaPaintBrush,
