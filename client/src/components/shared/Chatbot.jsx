@@ -702,52 +702,13 @@ export const Chatbot = () => {
       setChat([
         {
           role: "assistant",
-          content: `🤖 **Welcome to AIVA - Your AI Assistant!**
+          content: `Assistant ready.
 
-I'm here to help you manage your productivity and stay organized. Here's what I can do:
-
----
-
-**📋 TASK MANAGEMENT**
-• ✅ Create, update, and delete tasks
-• 📝 Assign priorities and due dates
-• 🔍 Search and filter your tasks
-• 📊 Track task completion status
-
-**🎯 HABIT TRACKING**
-• 💡 Create and monitor daily habits
-• 📈 View habit analytics and streaks
-• 🎖️ Earn rewards for consistency
-• 📅 Set habit reminders
-
-**🗂️ WORKSPACE ORGANIZATION**
-• 🏢 Create and manage workspaces
-• 👥 Invite team members
-• 📁 Organize projects by workspace
-• 🔐 Control access permissions
-
-**📝 NOTE MANAGEMENT**
-• ✍️ Create rich text notes
-• 🔎 Smart search across all notes
-• 🏷️ Tag and categorize notes
-• 📎 Attach files to notes
-
-**🔔 NOTIFICATIONS & REMINDERS**
-• 📢 View system notifications
-• ⏰ Set custom reminders
-• 📅 Calendar integration
-• 🔕 Manage notification preferences
-
----
-
-**💡 Quick Examples:**
-• *"Create a task for code review"*
-• *"Show my overdue tasks"*
-• *"Create workspace for Project Alpha"*
-• *"Remind me to call John at 3pm"*
-• *"Show my notifications"*
-
-What would you like to help you with today? 🚀`,
+Try:
+- "list all workspaces"
+- "show my tasks"
+- "create task code review"
+- "show reminders"`,
         },
       ]);
     }
@@ -784,7 +745,7 @@ What would you like to help you with today? 🚀`,
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-80 h-96 flex flex-col animate-slideUp mb-2">
           <div className="flex justify-between items-center p-4 border-b bg-indigo-600 text-white rounded-t-lg">
             <h3 className="font-semibold flex items-center">
-              <FaRobot className="mr-2" /> AI Assistant
+              <FaRobot className="mr-2" /> Assistant
             </h3>
             <button
               onClick={() => setIsOpen(false)}
@@ -892,7 +853,7 @@ What would you like to help you with today? 🚀`,
                 onKeyPress={(e) =>
                   e.key === "Enter" && !showDropdown && handleSend()
                 }
-                placeholder="Ask anything - tasks, habits, notes, reminders... (Use /t /h /w /n /st for shortcuts)"
+                placeholder="Ask Assistant (tasks, habits, notes, workspaces, reminders)"
                 className="flex-1 p-2 border rounded-l focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
               />
               <button
@@ -911,7 +872,7 @@ What would you like to help you with today? 🚀`,
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`bg-indigo-600 text-white p-4 rounded-full shadow-lg hover:bg-indigo-700 transition-all ${isOpen ? "animate-bounce" : "animate-pulse"}`}
-        title={isOpen ? "Close AI Assistant" : "Chat with AI Assistant"}
+        title={isOpen ? "Close Assistant" : "Open Assistant"}
       >
         <FaRobot size={24} />
       </button>

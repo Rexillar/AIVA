@@ -42,6 +42,7 @@ import { getContext, updateContext, PRIORITY_LEVELS } from './contextManager.js'
 import { getImprovedAIResponse } from './improvedGeminiService.js';
 import { processEnhancedVoiceCommand } from './enhancedVoiceProcessor.js';
 import { generateProactiveSuggestions, getTimeBasedSuggestions } from './proactiveSuggestions.js';
+import { getProactiveNudge, detectExecutionGaps } from './executionIntelligenceEngine.js';
 import { broadcastToUser } from './websocketStreaming.js';
 import { getCache, setCache, TTL_CONFIG } from './redisCache.js';
 
@@ -75,10 +76,39 @@ export const handleChatbotQuery = async (userMessage, userId, workspaceId, optio
       response = await getImprovedAIResponse(userMessage, userId, workspaceId, options);
     }
 
-    // Add proactive suggestions if requested
+    // Add intelligence-powered nudge + proactive suggestions
     if (includeSuggestions) {
-      const suggestions = await generateProactiveSuggestions(userId, workspaceId);
-      response.suggestions = suggestions.slice(0, 3); // Top 3 suggestions
+      try {
+        const [nudge, gaps, legacySuggestions] = await Promise.all([
+          getProactiveNudge(userId, workspaceId).catch(() => null),
+          detectExecutionGaps(userId, workspaceId).catch(() => null),
+          generateProactiveSuggestions(userId, workspaceId).catch(() => [])
+        ]);
+
+        // Intelligence nudge — single highest-priority insight
+        if (nudge) {
+          response.nudge = nudge;
+        }
+
+        // Execution gaps — velocity & scheduling issues
+        if (gaps) {
+          response.executionGaps = {
+            velocity: gaps.velocity,
+            alerts: [
+              ...(gaps.tomorrowOverload ? [{ type: 'overload', message: gaps.tomorrowOverload.message }] : []),
+              ...(gaps.unplannedDays || []).map(d => ({ type: 'unplanned', message: `${d} has no tasks scheduled` })),
+              ...(gaps.stuckTasks || []).map(t => ({ type: 'stuck', message: `"${t.title}" stuck in-progress for ${t.daysStuck} days` }))
+            ].slice(0, 3)
+          };
+        }
+
+        // Legacy suggestions as fallback
+        response.suggestions = (legacySuggestions || []).slice(0, 3);
+      } catch (err) {
+        // Intelligence layer is non-blocking — never fail the response
+        console.warn('Intelligence enrichment failed:', err.message);
+        response.suggestions = [];
+      }
     }
 
     // Cache successful responses
@@ -108,10 +138,12 @@ export const handleChatbotQuery = async (userMessage, userId, workspaceId, optio
  */
 export const getDashboardData = async (userId, workspaceId) => {
   try {
-    const [context, suggestions, timeBased] = await Promise.all([
+    const [context, suggestions, timeBased, nudge, gaps] = await Promise.all([
       getContext(userId, workspaceId, PRIORITY_LEVELS.HIGH),
       generateProactiveSuggestions(userId, workspaceId),
-      getTimeBasedSuggestions(userId, workspaceId)
+      getTimeBasedSuggestions(userId, workspaceId),
+      getProactiveNudge(userId, workspaceId).catch(() => null),
+      detectExecutionGaps(userId, workspaceId).catch(() => null)
     ]);
 
     return {
@@ -125,6 +157,14 @@ export const getDashboardData = async (userId, workspaceId) => {
           completed: context.todayHabits?.filter(h => h.completedToday).length || 0
         }
       },
+      intelligence: {
+        nudge,
+        velocity: gaps?.velocity || null,
+        alerts: gaps ? [
+          ...(gaps.tomorrowOverload ? [gaps.tomorrowOverload.message] : []),
+          ...(gaps.stuckTasks || []).map(t => `"${t.title}" stuck for ${t.daysStuck}d`)
+        ].slice(0, 3) : []
+      },
       suggestions: [...suggestions, ...timeBased].sort((a, b) => {
         const priority = { high: 3, medium: 2, low: 1 };
         return priority[b.priority] - priority[a.priority];
@@ -132,7 +172,8 @@ export const getDashboardData = async (userId, workspaceId) => {
       quickActions: [
         { label: 'List Tasks', query: 'show my tasks' },
         { label: 'Complete Habit', query: 'what habits are left?' },
-        { label: 'Daily Summary', query: 'how did I do today?' }
+        { label: 'Daily Summary', query: 'how did I do today?' },
+        { label: 'Execution Report', query: 'show my execution report' }
       ]
     };
   } catch (error) {
