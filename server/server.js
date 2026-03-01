@@ -65,6 +65,15 @@ import { reminderService } from './services/reminderService.js';
 import { checkGCSConnection } from './services/gcsService.js';
 import { quotaManager } from './middlewares/advancedRateLimitMiddleware.js';
 import syncScheduler from './services/syncScheduler.js';
+import { recurringTaskService } from './services/recurringTaskService.js';
+import { automationEngine } from './services/automationEngine.js';
+import intelligenceRoutes from './routes/intelligenceRoutes.js';
+import sourceRoutes from './routes/sourceRoutes.js';
+import knowledgeRoutes from './routes/knowledgeRoutes.js';
+import templateRoutes from './routes/templateRoutes.js';
+import automationRoutes from './routes/automationRoutes.js';
+import orchestrationRoutes from './routes/orchestrationRoutes.js';
+import gmailRoutes from './routes/gmailRoutes.js';
 
 dotenv.config();
 connectDB();
@@ -127,6 +136,13 @@ app.use('/api/canvas', canvasRoutes);
 app.use('/api/quotas', quotaRoutes);
 app.use('/api/google', googleIntegrationRoutes);
 app.use('/api/drive', driveRoutes);
+app.use('/api/intelligence', intelligenceRoutes);
+app.use('/api/sources', sourceRoutes);
+app.use('/api/knowledge', knowledgeRoutes);
+app.use('/api/templates', templateRoutes);
+app.use('/api/automation', automationRoutes);
+app.use('/api/orchestration', orchestrationRoutes);
+app.use('/api/gmail', gmailRoutes);
 
 // Socket.IO real-time collaboration
 io.on('connection', (socket) => {
@@ -169,5 +185,10 @@ server.listen(PORT, async () => {
   if (process.env.GOOGLE_SYNC_ENABLED !== 'false') {
     syncScheduler.start();
   }
+
+  // Start recurring task service and automation engine
+  recurringTaskService.start();
+  automationEngine.start();
+
   await checkGCSConnection();
 });

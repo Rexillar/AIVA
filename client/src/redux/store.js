@@ -58,6 +58,7 @@ import "./slices/api/uploadApiSlice";
 import { habitApiSlice } from "./slices/api/habitApiSlice";
 import { completionApiSlice } from "./slices/api/completionApiSlice";
 import { chatApiSlice } from "./slices/api/chatApiSlice";
+import "./slices/api/intelligenceApiSlice"; // Register intelligence endpoints
 import googleIntegrationReducer from "../slices/googleIntegrationSlice";
 import externalEventsReducer from "../slices/externalEventsSlice";
 import externalTasksReducer from "../slices/externalTasksSlice";

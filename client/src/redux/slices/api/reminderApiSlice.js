@@ -42,8 +42,9 @@ export const reminderApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getReminders: builder.query({
       query: (workspaceId) => ({
-        url: `/api/reminders/${workspaceId}`,
+        url: "/api/reminders",
         method: "GET",
+        params: workspaceId ? { workspaceId } : undefined,
       }),
       providesTags: ["Reminders"],
     }),

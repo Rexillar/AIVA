@@ -195,9 +195,8 @@ export const Notes = ({ workspaceId: propWorkspaceId }) => {
   const [createNote] = useCreateNoteMutation();
   const [deleteNote] = useDeleteNoteMutation();
 
-  // Filter out trashed and archived notes
   const notes = (notesData?.notes || []).filter(
-    note => note.isTrashed !== true // Allow notes that are not explicitly trashed
+    note => note.isTrash !== true // Allow notes that are not explicitly trashed
   );
 
   // Debug logging
@@ -234,8 +233,7 @@ export const Notes = ({ workspaceId: propWorkspaceId }) => {
         content: "<p>Start writing your note...</p>",
         mode: "text",
         type: "simple",
-        isTrashed: false,
-        isArchived: false,
+        isTrash: false,
       }).unwrap();
 
       if (result.status && result.data) {
@@ -524,7 +522,7 @@ export const Notes = ({ workspaceId: propWorkspaceId }) => {
         onNewNote={handleNewNote}
         onSearch={() => { }}
         onToggleFavorites={() => { }}
-        onViewArchived={() => { }}
+        onViewTrash={() => { }}
       />
     </div>
   );

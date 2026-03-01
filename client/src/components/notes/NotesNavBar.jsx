@@ -61,7 +61,7 @@ export const NotesNavBar = ({
   onNewNote,
   onSearch,
   onToggleFavorites,
-  onViewArchived,
+  onViewTrash,
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -103,8 +103,8 @@ export const NotesNavBar = ({
       <NavButton icon={FaPlus} label="New Note" onClick={onNewNote} />
       <NavButton icon={FaSearch} label="Search" onClick={onSearch} />
       <NavButton icon={FaStar} label="Favorites" onClick={onToggleFavorites} />
-      <NavButton icon={FaFolder} label="Folders" onClick={() => {}} />
-      <NavButton icon={FaTrash} label="Trash" onClick={onViewArchived} />
+      <NavButton icon={FaFolder} label="Folders" onClick={() => { }} />
+      <NavButton icon={FaTrash} label="Trash" onClick={onViewTrash} />
     </div>
   );
 };

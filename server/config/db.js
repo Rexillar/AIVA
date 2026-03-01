@@ -36,6 +36,12 @@
 
 ═══════════════════════════════════════════════════════════════════════════════*/
 import mongoose from 'mongoose';
+import dns from 'dns';
+
+// Force Node.js (c-ares) to use Google DNS for SRV lookups.
+// The local router DNS (fe80::1) refuses SRV queries directly from Node.js,
+// even though Windows DNS Client (PowerShell) resolves them fine via caching.
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 
 const connectDB = async (retries = 5) => {
   try {

@@ -74,6 +74,13 @@ import canvasRoutes from './routes/canvasRoutes.js';
 import quotaRoutes from './routes/quotaRoutes.js';
 import googleIntegrationRoutes from './routes/googleIntegrationRoutes.js';
 import driveRoutes from './routes/driveRoutes.js';
+import intelligenceRoutes from './routes/intelligenceRoutes.js';
+import sourceRoutes from './routes/sourceRoutes.js';
+import knowledgeRoutes from './routes/knowledgeRoutes.js';
+import templateRoutes from './routes/templateRoutes.js';
+import automationRoutes from './routes/automationRoutes.js';
+import orchestrationRoutes from './routes/orchestrationRoutes.js';
+import gmailRoutes from './routes/gmailRoutes.js';
 import { errorHandler, routeNotFound as notFound } from './middlewares/errorMiddleware.js';
 import {
   globalRateLimit,
@@ -87,6 +94,8 @@ import {
 } from './middlewares/requestSizeMiddleware.js';
 import { quotaManager } from './middlewares/advancedRateLimitMiddleware.js';
 import syncScheduler from './services/syncScheduler.js';
+import { recurringTaskService } from './services/recurringTaskService.js';
+import { automationEngine } from './services/automationEngine.js';
 
 // --- Server Startup ---
 const startServer = () => {
@@ -188,6 +197,13 @@ const startServer = () => {
   app.use('/api/canvas', canvasRoutes);
   app.use('/api/google', googleIntegrationRoutes);
   app.use('/api/drive', driveRoutes);
+  app.use('/api/intelligence', intelligenceRoutes);
+  app.use('/api/sources', sourceRoutes);
+  app.use('/api/knowledge', knowledgeRoutes);
+  app.use('/api/templates', templateRoutes);
+  app.use('/api/automation', automationRoutes);
+  app.use('/api/orchestration', orchestrationRoutes);
+  app.use('/api/gmail', gmailRoutes);
   app.use('/api/quotas', quotaRoutes);
 
   // --- Production Build Serving ---
@@ -251,6 +267,11 @@ const startServer = () => {
         if (process.env.GOOGLE_SYNC_ENABLED !== 'false') {
           syncScheduler.start();
         }
+
+        // 7. Start recurring task service and automation engine
+        recurringTaskService.start();
+        automationEngine.start();
+
         isServerReady = true;
 
       } catch (error) {
