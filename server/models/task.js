@@ -272,12 +272,12 @@ const taskSchema = new mongoose.Schema({
   }],
   subtasks: [subtaskSchema],
   activities: [activitySchema],
-  isArchived: {
+  isTrash: {
     type: Boolean,
     default: false
   },
-  archivedAt: Date,
-  archivedBy: {
+  trashedAt: Date,
+  trashedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
@@ -310,6 +310,25 @@ const taskSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }],
+  // ── Recurrence Support ──
+  recurrence: {
+    enabled: { type: Boolean, default: false },
+    pattern: {
+      type: String,
+      enum: ['daily', 'weekly', 'biweekly', 'monthly', 'custom'],
+      default: null
+    },
+    interval: { type: Number, default: 1 },           // every N days/weeks/months
+    daysOfWeek: [{ type: Number, min: 0, max: 6 }],   // 0=Sun … 6=Sat (for weekly)
+    dayOfMonth: { type: Number, min: 1, max: 31 },    // for monthly
+    endDate: Date,                                     // when recurrence stops
+    maxOccurrences: Number,                            // or stop after N
+    occurrenceCount: { type: Number, default: 0 },     // how many created so far
+    parentTaskId: { type: mongoose.Schema.Types.ObjectId, ref: 'Task' }, // original template task
+    lastGeneratedDate: Date                             // last date an occurrence was created
+  },
+  // ── Template reference ──
+  templateId: { type: mongoose.Schema.Types.ObjectId, ref: 'TaskTemplate' },
   comments: [{
     content: {
       type: String,
@@ -353,6 +372,7 @@ taskSchema.pre('save', function (next) {
 
 // Indexes for better query performance
 taskSchema.index({ workspace: 1, isDeleted: 1 });
+taskSchema.index({ workspace: 1, isTrash: 1 });
 taskSchema.index({ workspace: 1, stage: 1 });
 taskSchema.index({ assignees: 1 });
 taskSchema.index({ dueDate: 1 });
@@ -368,7 +388,7 @@ taskSchema.virtual('progress').get(function () {
 // Virtual for status calculation
 taskSchema.virtual('status').get(function () {
   if (this.isDeleted) return 'deleted';
-  if (this.isArchived) return 'archived';
+  if (this.isTrash) return 'trashed';
   if (this.stage === 'completed') return 'completed';
   if (this.dueDate && new Date(this.dueDate) < new Date()) return 'overdue';
   return 'active';

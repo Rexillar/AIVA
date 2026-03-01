@@ -476,18 +476,20 @@ const AddTask = ({ isOpen, setOpen, onSuccess, taskType = "default" }) => {
           </div>
         )}
 
-        {/* Assignees Field */}
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Assignees
-          </label>
-          <UserList
-            workspaceId={workspace?._id}
-            selectedUsers={selectedMembers}
-            onUserSelect={handleUserSelect}
-            showEmail
-          />
-        </div>
+        {/* Assignees Field — only shown for public/team workspaces */}
+        {workspace?.type !== 'private' && (
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Assignees
+            </label>
+            <UserList
+              workspaceId={workspace?._id}
+              selectedUsers={selectedMembers}
+              onUserSelect={handleUserSelect}
+              showEmail
+            />
+          </div>
+        )}
 
         {/* Form Actions */}
         <div className="flex justify-end space-x-2 pt-4">

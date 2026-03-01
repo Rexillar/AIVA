@@ -40,6 +40,12 @@ import Task from '../models/task.js';
 import { Workspace } from '../models/workspace.js';
 import mongoose from 'mongoose';
 
+// Lazy-load ExternalTask to avoid circular dependency issues
+const getExternalTaskModel = async () => {
+  const { default: ExternalTask } = await import('../models/externalTask.js');
+  return ExternalTask;
+};
+
 // Get task by ID and check user has access
 export const getTaskById = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
@@ -92,12 +98,59 @@ export const getTaskById = asyncHandler(async (req, res, next) => {
       });
 
     if (!task) {
+      // Check if this is a Google ExternalTask (has same MongoDB ObjectID format)
+      try {
+        const ExternalTask = await getExternalTaskModel();
+        console.log('[getTaskById] Task not found in Task collection, checking ExternalTask for id:', id);
+        const externalTask = await ExternalTask.findById(id);
+        console.log('[getTaskById] ExternalTask.findById result:', externalTask ? `found (isDeleted=${externalTask.isDeleted})` : 'null');
+
+        if (externalTask) {
+          // Resolve the workspace from ExternalTask's workspaceId field
+          const workspace = await Workspace.findById(externalTask.workspaceId);
+          if (!workspace) {
+            res.status(404);
+            throw new Error('Associated workspace not found');
+          }
+
+          // Check if user is workspace member
+          const isMember = workspace.members.some(
+            m => m.user.toString() === req.user._id.toString() && m.isActive
+          );
+          if (!isMember) {
+            res.status(403);
+            throw new Error('Not authorized to access this task');
+          }
+
+          // Mark as external task so controllers can handle it differently
+          req.externalTask = externalTask;
+          req.isExternalTask = true;
+          req.workspace = workspace;
+          req.task = externalTask; // Set req.task for consistency with regular tasks
+          return next();
+        }
+      } catch (externalErr) {
+        // Only swallow CastErrors (invalid ID format on ExternalTask lookup)
+        // Re-throw any other errors (DB failures, auth errors, etc.)
+        console.log('[getTaskById] ExternalTask lookup error:', externalErr.message);
+        if (!(externalErr instanceof mongoose.Error.CastError)) {
+          throw externalErr;
+        }
+      }
+
       res.status(404);
       throw new Error('Task not found');
     }
 
     // Get workspace to check permissions
-    const workspace = await Workspace.findById(task.workspace);
+    // Handle both regular tasks (workspace) and external tasks (workspaceId)
+    const workspaceId = task.workspace || task.workspaceId;
+    if (!workspaceId) {
+      res.status(400);
+      throw new Error('Task does not have a valid workspace reference');
+    }
+
+    const workspace = await Workspace.findById(workspaceId);
     if (!workspace) {
       res.status(404);
       throw new Error('Associated workspace not found');
@@ -161,8 +214,23 @@ export const canModifyTask = asyncHandler(async (req, res, next) => {
   }
 
   // For single task operations
-  const task = req.task;
-  const workspace = await Workspace.findById(task.workspace);
+  // Handle both regular tasks and Google external tasks
+  const task = req.task || req.externalTask;
+  
+  if (!task) {
+    res.status(404);
+    throw new Error('Task not found');
+  }
+  
+  // Handle both regular tasks (workspace) and external tasks (workspaceId)
+  const taskWorkspaceId = task.workspace || task.workspaceId;
+
+  if (!taskWorkspaceId) {
+    res.status(400);
+    throw new Error('Task does not have a valid workspace reference');
+  }
+
+  const workspace = await Workspace.findById(taskWorkspaceId);
 
   if (!workspace) {
     res.status(404);

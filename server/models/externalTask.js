@@ -36,6 +36,7 @@
 
 ═══════════════════════════════════════════════════════════════════════════════*/
 import mongoose from 'mongoose';
+import { encryptionPlugin } from '../utils/encryption.js';
 
 const ExternalTaskSchema = new mongoose.Schema({
   workspaceId: {
@@ -195,6 +196,15 @@ const ExternalTaskSchema = new mongoose.Schema({
   },
 
   // Soft delete
+  isTrash: {
+    type: Boolean,
+    default: false
+  },
+  trashedAt: Date,
+  trashedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
   isDeleted: {
     type: Boolean,
     default: false
@@ -204,6 +214,17 @@ const ExternalTaskSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true
+});
+
+// Apply encryption plugin for sensitive fields BEFORE creating model
+// This ensures Google task titles/descriptions are stored encrypted and
+// auto-decrypted when loaded — consistent with native AIVA Task model.
+ExternalTaskSchema.plugin(encryptionPlugin, {
+  encryptedFields: [
+    'title',
+    'description',
+    'notes'
+  ]
 });
 
 // Indexes

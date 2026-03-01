@@ -177,16 +177,40 @@ const TaskDetails = () => {
   const [updatingSubtaskIds, setUpdatingSubtaskIds] = useState(new Set());
   const [lastToggleTime, setLastToggleTime] = useState({});
 
-  const isValidWorkspaceId = Boolean(workspaceId && workspaceId.length === 24);
+  // Fall back to Redux currentWorkspace when URL param is missing (e.g. /task/:id route)
+  const effectiveWorkspaceId = (workspaceId && workspaceId.length === 24)
+    ? workspaceId
+    : currentWorkspace?._id;
+
+  const isValidWorkspaceId = Boolean(effectiveWorkspaceId && effectiveWorkspaceId.length === 24);
   const isValidMongoId = Boolean(taskId && /^[0-9a-fA-F]{24}$/.test(taskId));
   const isGoogleTaskId = Boolean(taskId && !isValidMongoId);
 
+  // Task passed via React Router navigate state (from TaskCard click)
+  // This is the fastest path — no API call needed, data is already available
+  const navStateTask = location.state?.task || null;
+  const isNavStateGoogleTask = Boolean(navStateTask?.isGoogleTask);
+
+  // ExternalTasks from the workspace tasks list have real MongoDB ObjectIds but ARE Google tasks.
+  // Detect them by checking the Redux externalTasks store before making any API call.
+  const knownGoogleTask = useMemo(() =>
+    (externalTasks || []).find(t =>
+      t._id?.toString() === taskId || t.googleTaskId === taskId
+    ) || null,
+    [externalTasks, taskId]
+  );
+  const isKnownGoogleTask = Boolean(knownGoogleTask?.isGoogleTask);
+
+  // Combined flag: skip API call if Google task identified by any means
+  const skipApiCall = !taskId || !isValidWorkspaceId || isGoogleTaskId || isNavStateGoogleTask || isKnownGoogleTask;
+
   // Fetch external tasks to get Google Tasks subtasks or Google task details
   useEffect(() => {
-    if (workspaceId) {
-      dispatch(fetchExternalTasks({ workspaceId }));
+    if (effectiveWorkspaceId) {
+      dispatch(fetchExternalTasks({ workspaceId: effectiveWorkspaceId }));
     }
-  }, [workspaceId, dispatch]);
+  }, [effectiveWorkspaceId, dispatch]);
+
 
   // Effect to handle navigation state persistence
   useEffect(() => {
@@ -233,7 +257,7 @@ const TaskDetails = () => {
 
   // Add workspace query with proper options
   const { data: workspaceData, isLoading: isWorkspaceLoading } =
-    useGetWorkspaceQuery(workspaceId, {
+    useGetWorkspaceQuery(effectiveWorkspaceId, {
       skip: !isValidWorkspaceId,
       refetchOnMountOrArgChange: true,
     });
@@ -242,7 +266,7 @@ const TaskDetails = () => {
   useEffect(() => {
     if (
       workspaceData &&
-      (!currentWorkspace || currentWorkspace._id !== workspaceId)
+      (!currentWorkspace || currentWorkspace._id !== effectiveWorkspaceId)
     ) {
       // Store workspace data in Redux
       dispatch(setCurrentWorkspace(workspaceData.data || workspaceData));
@@ -253,7 +277,7 @@ const TaskDetails = () => {
         JSON.stringify(workspaceData.data || workspaceData),
       );
     }
-  }, [workspaceData, currentWorkspace, workspaceId, dispatch]);
+  }, [workspaceData, currentWorkspace, effectiveWorkspaceId, dispatch]);
 
   // Effect to restore workspace on page load
   useEffect(() => {
@@ -263,7 +287,7 @@ const TaskDetails = () => {
       if (savedWorkspace) {
         try {
           const parsedWorkspace = JSON.parse(savedWorkspace);
-          if (parsedWorkspace._id === workspaceId) {
+          if (parsedWorkspace._id === effectiveWorkspaceId) {
             dispatch(setCurrentWorkspace(parsedWorkspace));
           }
         } catch (error) {
@@ -271,7 +295,7 @@ const TaskDetails = () => {
         }
       }
     }
-  }, [currentWorkspace, workspaceId, dispatch, isValidWorkspaceId]);
+  }, [currentWorkspace, effectiveWorkspaceId, dispatch, isValidWorkspaceId]);
 
   const {
     data: taskData,
@@ -279,16 +303,40 @@ const TaskDetails = () => {
     error,
     refetch,
   } = useGetTaskQuery(
-    { taskId, workspaceId },
-    {
-      skip: !taskId || !isValidWorkspaceId || isGoogleTaskId, // Skip if it's a Google task
-      // Let RTK Query handle caching normally
-    },
+    { taskId, workspaceId: effectiveWorkspaceId },
+    { skip: skipApiCall },
   );
 
   // Merge Google Task subtasks if this is a Google Task OR fetch Google task if it's a Google task ID
   const task = useMemo(() => {
-    // If it's a Google task ID, fetch from externalTasks
+    // 1. Task passed via navigation state (fastest path, available from first render)
+    if (isNavStateGoogleTask && navStateTask) {
+      const googleSubtasks = (externalTasks || []).filter(
+        t => t.parent === (navStateTask.googleTaskId || navStateTask._id?.toString())
+      ).map(subtask => ({
+        ...subtask,
+        _id: subtask._id || subtask.googleTaskId,
+        completed: subtask.status === 'completed',
+        isGoogleTask: true
+      }));
+      return { ...navStateTask, subtasks: googleSubtasks, isGoogleTask: true };
+    }
+
+    // 2. Task found in externalTasks Redux store (by MongoDB ObjectId or Google string Id)
+    if (isKnownGoogleTask && knownGoogleTask) {
+      // Find subtasks from externalTasks
+      const googleSubtasks = (externalTasks || []).filter(
+        t => t.parent === (knownGoogleTask.googleTaskId || knownGoogleTask._id?.toString())
+      ).map(subtask => ({
+        ...subtask,
+        _id: subtask._id || subtask.googleTaskId,
+        completed: subtask.status === 'completed',
+        isGoogleTask: true
+      }));
+      return { ...knownGoogleTask, subtasks: googleSubtasks, isGoogleTask: true };
+    }
+
+    // 3. Google task ID (non-hex string) — look up in externalTasks by googleTaskId
     if (isGoogleTaskId) {
       const googleTask = (externalTasks || []).find(t => t._id === taskId || t.googleTaskId === taskId);
       if (!googleTask) return null;
@@ -486,7 +534,7 @@ const TaskDetails = () => {
     try {
       await updateTask({
         taskId,
-        workspaceId,
+        workspaceId: effectiveWorkspaceId,
         updates: { stage: newStatus },
       }).unwrap();
       toast.success("Task status updated");
@@ -502,10 +550,47 @@ const TaskDetails = () => {
       return;
     }
 
+    // For Google tasks, create via the Google Tasks endpoint
+    if (task?.isGoogleTask) {
+      try {
+        const token = localStorage.getItem("token");
+        const response = await fetch(
+          `/api/google/tasks/${effectiveWorkspaceId}/${task._id}/subtask`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              title: title.trim(),
+              googleAccountId: task.googleAccountId,
+              googleTaskListId: task.googleTaskListId,
+              googleTaskId: task.googleTaskId,
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          const err = await response.json();
+          toast.error(err.error || "Failed to create subtask");
+          return;
+        }
+
+        toast.success("Subtask added to Google Tasks");
+        // Refresh to show the new subtask
+        dispatch(fetchExternalTasks({ workspaceId: effectiveWorkspaceId }));
+      } catch (error) {
+        toast.error("Failed to create subtask in Google Tasks");
+      }
+      return;
+    }
+
+    // Regular AIVA task subtask creation
     try {
       await createSubtask({
         taskId,
-        workspaceId,
+        workspaceId: effectiveWorkspaceId,
         title: title.trim(),
       }).unwrap();
 
@@ -545,7 +630,7 @@ const TaskDetails = () => {
         const API_URL = import.meta.env.VITE_API_URL || '/api';
         const token = localStorage.getItem('token');
 
-        const response = await fetch(`${API_URL}/google/tasks/${workspaceId}/${subtaskId}`, {
+        const response = await fetch(`${API_URL}/google/tasks/${effectiveWorkspaceId}/${subtaskId}`, {
           method: 'PUT',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -565,7 +650,7 @@ const TaskDetails = () => {
 
         toast.success(`Subtask marked as ${newStatus}`);
         // Refetch external tasks to update UI
-        dispatch(fetchExternalTasks({ workspaceId }));
+        dispatch(fetchExternalTasks({ workspaceId: effectiveWorkspaceId }));
       } catch (error) {
         console.error('Error updating Google task subtask:', error);
         toast.error(error.message || 'Failed to update subtask');
@@ -586,7 +671,7 @@ const TaskDetails = () => {
     try {
       await updateTaskSubtasks({
         taskId,
-        workspaceId,
+        workspaceId: effectiveWorkspaceId,
         subtasks: updatedSubtasks,
       }).unwrap();
 
@@ -639,7 +724,7 @@ const TaskDetails = () => {
 
       await updateTaskSubtasks({
         taskId,
-        workspaceId,
+        workspaceId: effectiveWorkspaceId,
         subtasks: updatedSubtasks,
       }).unwrap();
 
@@ -670,7 +755,7 @@ const TaskDetails = () => {
           return;
         }
 
-        const response = await fetch(`${API_URL}/google/tasks/${workspaceId}/${subtaskId}`, {
+        const response = await fetch(`${API_URL}/google/tasks/${effectiveWorkspaceId}/${subtaskId}`, {
           method: 'PUT',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -690,7 +775,7 @@ const TaskDetails = () => {
 
         toast.success(`Subtask status updated to ${newStatus}`);
         // Refetch external tasks to update UI
-        dispatch(fetchExternalTasks({ workspaceId }));
+        dispatch(fetchExternalTasks({ workspaceId: effectiveWorkspaceId }));
       } catch (error) {
         console.error('Error updating Google task subtask:', error);
         toast.error(error.message || 'Failed to update subtask');
@@ -711,7 +796,7 @@ const TaskDetails = () => {
     try {
       await updateTaskSubtasks({
         taskId,
-        workspaceId,
+        workspaceId: effectiveWorkspaceId,
         subtasks: updatedSubtasks,
       }).unwrap();
 
@@ -742,14 +827,13 @@ const TaskDetails = () => {
             {!taskId
               ? "Task ID is missing"
               : !isValidWorkspaceId
-                ? `Invalid workspace ID format: ${workspaceId}`
+                ? `Invalid workspace ID format: ${effectiveWorkspaceId}`
                 : "Invalid ID format"}
           </p>
         </div>
         <button
           onClick={() => {
-            const targetPath = `/workspace/${workspaceId}/tasks`;
-            //console.log('Navigating to:', targetPath); // Debug log
+            const targetPath = `/workspace/${effectiveWorkspaceId}/tasks`;
             navigate(targetPath, { replace: true });
           }}
           className="px-4 py-2 text-blue-600 hover:text-blue-700 flex items-center gap-2"
@@ -790,8 +874,7 @@ const TaskDetails = () => {
           </button>
           <button
             onClick={() => {
-              const targetPath = `/workspace/${workspaceId}/tasks`;
-              //console.log('Navigating to:', targetPath); // Debug log
+              const targetPath = `/workspace/${effectiveWorkspaceId}/tasks`;
               navigate(targetPath, { replace: true });
             }}
             className="px-4 py-2 text-blue-600 hover:text-blue-700 flex items-center gap-2"
@@ -867,10 +950,10 @@ const TaskDetails = () => {
 
             <span
               className={`px-2 py-1 text-xs rounded-full ${task.priority === "high"
-                  ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
-                  : task.priority === "medium"
-                    ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-                    : "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                : task.priority === "medium"
+                  ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                  : "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
                 }`}
             >
               {task.priority}
@@ -940,8 +1023,8 @@ const TaskDetails = () => {
             <button
               onClick={() => setActiveTab("details")}
               className={`${activeTab === "details"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                ? "border-blue-500 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                 } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
             >
               <FaTasks className="w-4 h-4" />
@@ -952,8 +1035,8 @@ const TaskDetails = () => {
               <button
                 onClick={() => setActiveTab("chat")}
                 className={`${activeTab === "chat"
-                    ? "border-blue-500 text-blue-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                   } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
               >
                 <FaComments className="w-4 h-4" />
@@ -963,8 +1046,8 @@ const TaskDetails = () => {
             <button
               onClick={() => setActiveTab("files")}
               className={`${activeTab === "files"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                ? "border-blue-500 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                 } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
             >
               <FaFile className="w-4 h-4" />
@@ -1006,8 +1089,8 @@ const TaskDetails = () => {
                             }
                             disabled={updatingSubtaskIds.has(subtask._id)}
                             className={`w-6 h-6 flex items-center justify-center rounded-full border-2 transition-all duration-200 ${updatingSubtaskIds.has(subtask._id)
-                                ? "opacity-50 cursor-not-allowed"
-                                : "cursor-pointer hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-900/30"
+                              ? "opacity-50 cursor-not-allowed"
+                              : "cursor-pointer hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-900/30"
                               } ${subtask.status === "completed"
                                 ? "border-green-500 bg-green-500 hover:bg-green-600"
                                 : "border-gray-300 dark:border-gray-600"
@@ -1082,8 +1165,8 @@ const TaskDetails = () => {
                           ) : (
                             <p
                               className={`text-sm mb-3 ${subtask.status === "completed"
-                                  ? "text-gray-400 dark:text-gray-500 line-through"
-                                  : "text-gray-900 dark:text-white"
+                                ? "text-gray-400 dark:text-gray-500 line-through"
+                                : "text-gray-900 dark:text-white"
                                 }`}
                             >
                               {subtask.title}

@@ -190,6 +190,8 @@ export const taskApiSlice = apiSlice.injectEndpoints({
         return {
           status: true,
           data: response.data,
+          externalTask: response.externalTask || null,
+          isGoogleSynced: !!response.isGoogleSynced,
         };
       },
       async onQueryStarted(arg, { dispatch, queryFulfilled }) {
@@ -262,14 +264,6 @@ export const taskApiSlice = apiSlice.injectEndpoints({
           // Wait for the mutation to complete
           const result = await queryFulfilled;
           const response = result.data;
-
-          // Check if rewards were earned
-          // Note: Gamification functionality not implemented
-          // if (response.rewards) {
-          //   dispatch(showRewards(response.rewards));
-          // }
-
-          // Update the task in the cache immediately
           dispatch(
             taskApiSlice.util.updateQueryData(
               "getWorkspaceTasks",
@@ -313,8 +307,8 @@ export const taskApiSlice = apiSlice.injectEndpoints({
                 draft.stats.completionRate =
                   draft.stats.total > 0
                     ? Math.round(
-                        (draft.stats.completed / draft.stats.total) * 100,
-                      )
+                      (draft.stats.completed / draft.stats.total) * 100,
+                    )
                     : 0;
               },
             ),
@@ -400,12 +394,9 @@ export const taskApiSlice = apiSlice.injectEndpoints({
                 "Dashboard",
               ]),
             );
-
-            notify.success("Task deleted permanently");
           }
         } catch (error) {
-          // console.error('Error deleting task:', error);
-          notify.error(error?.error?.data?.message || "Failed to delete task");
+          // Let the caller (Trash.jsx) handle toast feedback
           throw error;
         }
       },
@@ -538,7 +529,6 @@ export const taskApiSlice = apiSlice.injectEndpoints({
             workspaceId,
             filter,
             status,
-            includeArchived: filter === "trash" ? true : undefined,
             includeDeleted: filter === "trash" ? true : undefined,
           },
         };
@@ -554,7 +544,7 @@ export const taskApiSlice = apiSlice.injectEndpoints({
           in_progress: tasks.filter((t) => t.stage === "in_progress").length,
           review: tasks.filter((t) => t.stage === "review").length,
           completed: tasks.filter((t) => t.stage === "completed").length,
-          archived: tasks.filter((t) => t.isArchived === true).length,
+          trashed: tasks.filter((t) => t.isTrash === true).length,
           deleted: tasks.filter((t) => t.isDeleted === true).length,
           overdue: tasks.filter((t) => {
             const dueDate = new Date(t.dueDate);
@@ -574,7 +564,7 @@ export const taskApiSlice = apiSlice.injectEndpoints({
             stats.total > 0
               ? Math.round((stats.completed / stats.total) * 100)
               : 0;
-          stats.trashCount = (stats.archived || 0) + (stats.deleted || 0);
+          stats.trashCount = (stats.trashed || 0) + (stats.deleted || 0);
         }
 
         return {
@@ -755,14 +745,9 @@ export const taskApiSlice = apiSlice.injectEndpoints({
                 "Dashboard",
               ]),
             );
-
-            toast.success("Task restored successfully");
           }
         } catch (error) {
-          // console.error('Error restoring task:', error);
-          const message =
-            error?.error?.data?.message || "Failed to restore task";
-          toast.error(message);
+          // Let the caller (Trash.jsx) handle toast feedback
           throw error;
         }
       },

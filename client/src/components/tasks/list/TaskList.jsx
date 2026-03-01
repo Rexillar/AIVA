@@ -37,10 +37,9 @@
 ═══════════════════════════════════════════════════════════════════════════════*/
 
 import React, { useState, useCallback } from "react";
-import { useDispatch } from "react-redux";
 import { useGetWorkspaceTasksQuery } from "../../../redux/slices/api/taskApiSlice";
 import { useGetWorkspaceMembersQuery } from "../../../redux/slices/api/workspaceApiSlice";
-import { fetchExternalTasks } from "../../../slices/externalTasksSlice";
+
 import TaskCard from "../cards/TaskCard";
 import { LoadingSpinner } from "../../shared/feedback/LoadingSpinner";
 import { useWorkspace } from "../../workspace/provider/WorkspaceProvider";
@@ -121,16 +120,15 @@ const TaskItemWithSubtasks = ({ task, onUpdate, showSubtasks, level = 0 }) => {
 
 const TaskList = ({ tasks: propTasks, showBudgetDetails, workspace: propWorkspace, showSubtasks = false }) => {
   const [filter, setFilter] = useState("active");
-  const dispatch = useDispatch();
   const {
     workspace: contextWorkspace,
     isLoading: isWorkspaceLoading,
     error: workspaceError,
   } = useWorkspace();
-  
+
   // Use prop workspace if provided, otherwise use context
   const workspace = propWorkspace || contextWorkspace;
-  
+
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [isAddMainTaskOpen, setIsAddMainTaskOpen] = useState(false);
@@ -155,6 +153,7 @@ const TaskList = ({ tasks: propTasks, showBudgetDetails, workspace: propWorkspac
   const {
     data,
     isLoading: isTasksLoading,
+    isFetching: isTasksFetching,
     error: tasksError,
     refetch,
   } = useGetWorkspaceTasksQuery(
@@ -170,6 +169,7 @@ const TaskList = ({ tasks: propTasks, showBudgetDetails, workspace: propWorkspac
   );
 
   // Use prop tasks if provided, otherwise use fetched data
+  // While a background refetch is in-flight, keep showing current data (no flash)
   const tasks = propTasks || data?.tasks || [];
   const stats = data?.stats || {};
 
@@ -181,15 +181,14 @@ const TaskList = ({ tasks: propTasks, showBudgetDetails, workspace: propWorkspac
       // Only refetch AIVA tasks if the query is active (not skipped)
       if (!propTasks && workspace?._id && !isWorkspaceLoading) {
         await refetch();
+        // Google tasks are included in the merged backend response ─ no separate fetch needed
       }
-      // Always refetch Google tasks
-      dispatch(fetchExternalTasks({ workspaceId: workspace._id }));
     } catch (err) {
       console.error('Error refreshing tasks:', err);
-      
+
       // Silently handle network connectivity errors without showing toast
       // Only show toast for actual user-actionable errors
-      const isNetworkError = 
+      const isNetworkError =
         err?.code === 'ERR_INTERNET_DISCONNECTED' ||
         err?.code === 'ERR_CONNECTION_REFUSED' ||
         err?.message?.includes('503') ||
@@ -253,7 +252,7 @@ const TaskList = ({ tasks: propTasks, showBudgetDetails, workspace: propWorkspac
     );
   }
 
-  // Show loading state when fetching members or tasks
+  // Show loading state when fetching members or tasks (initial load only, not background refetch)
   if (isMembersLoading || isTasksLoading) {
     return (
       <div className="flex justify-center items-center min-h-[200px]">
@@ -298,7 +297,7 @@ const TaskList = ({ tasks: propTasks, showBudgetDetails, workspace: propWorkspac
             <FaPlus />
             Add Task
           </button>
-         
+
         </div>
       </div>
 
@@ -320,8 +319,8 @@ const TaskList = ({ tasks: propTasks, showBudgetDetails, workspace: propWorkspac
 
       {/* Task List */}
       <div className="mt-4">
-        {isTasksLoading ? (
-          <div className="flex justify-center">
+        {(isTasksLoading || isTasksFetching) ? (
+          <div className="flex justify-center items-center py-8">
             <Spinner size="lg" />
           </div>
         ) : tasksError ? (

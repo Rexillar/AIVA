@@ -36,10 +36,9 @@
 
 ═══════════════════════════════════════════════════════════════════════════════*/
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useDispatch, useSelector } from "react-redux";
-import { useGetTasksQuery } from "../redux/slices/api/taskApiSlice";
+import { useGetWorkspaceTasksQuery } from "../redux/slices/api/taskApiSlice";
 import { useGetWorkspaceQuery } from "../redux/slices/api/workspaceApiSlice";
 import { TaskList, AddTask } from "../components/tasks";
 import TaskCard from "../components/tasks/cards/TaskCard";
@@ -71,7 +70,6 @@ ChartJS.register(
 
 const TaskPage = () => {
   const { workspaceId } = useParams();
-  const dispatch = useDispatch();
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterPriority, setFilterPriority] = useState("all");
@@ -79,99 +77,26 @@ const TaskPage = () => {
 
   const navigate = useNavigate();
 
-  // Redux state for external tasks
-  const { tasks: externalTasks, loading: externalTasksLoading } = useSelector(
-    (state) => state.externalTasks
-  );
-
-  // Fetch workspace and tasks data
+  // Fetch workspace info
   const { data: workspaceData, isLoading: workspaceLoading } =
     useGetWorkspaceQuery(workspaceId);
   const workspace = workspaceData?.workspace;
+
+  // Single merged endpoint — backend returns AIVA + Google tasks already deduplicated
   const {
-    data: tasks,
+    data: tasksData,
     isLoading: tasksLoading,
+    isFetching: tasksFetching,
     isError,
     error,
     refetch,
-  } = useGetTasksQuery(
-    {
-      workspaceId,
-    },
-    {
-      skip: !workspaceId,
-    },
+  } = useGetWorkspaceTasksQuery(
+    { workspaceId },
+    { skip: !workspaceId, refetchOnMountOrArgChange: true }
   );
 
-  // Fetch external Google Tasks when component mounts + auto-refresh every 2 minutes
-  useEffect(() => {
-    if (workspaceId) {
-      // Initial fetch
-      dispatch(fetchExternalTasks({
-        workspaceId
-      }));
-
-      // Auto-refresh every 2 minutes to avoid rate limiting
-      const intervalId = setInterval(() => {
-        console.log('[TaskPage] Auto-refreshing Google Tasks...');
-        dispatch(fetchExternalTasks({ workspaceId }));
-      }, 120000); // 2 minutes (120 seconds)
-
-      return () => clearInterval(intervalId);
-    }
-  }, [workspaceId, dispatch]);
-
-  // Combine AIVA tasks with Google Tasks (avoiding duplicates)
-  // STRATEGY: Show Google Tasks (external) and hide corresponding AIVA tasks (local)
-  const allTasks = useMemo(() => {
-    // Get all Google tasks
-    const googleTasks = (externalTasks || []).map(task => ({
-      ...task,
-      isGoogleTask: true,
-      stage: task.status === 'completed' ? 'completed' : 'todo',
-      description: task.notes || task.description,
-      priority: task.priority || 'medium',
-      taskType: 'regular',
-      workspace: task.workspace || workspaceId,
-      workspaceId: task.workspaceId || workspaceId,
-      parent: task.parent,
-      subtasks: []
-    }));
-
-    // Create a set of AIVA Task IDs that are already shown as Google Tasks
-    const linkedAivaTaskIds = new Set(
-      googleTasks
-        .filter(gt => gt.aivaTaskId)
-        .map(gt => gt.aivaTaskId.toString())
-    );
-
-    // Process AIVA tasks - Hide if synced OR if linked by ID to a Google Task OR if Title matches (fuzzy fallback)
-    const aivaTasks = (tasks || [])
-      .filter(t => {
-        // Hide if explicitly marked as synced
-        if (t.isGoogleSynced) return false;
-
-        // Hide if we have a Google Task that links to this AIVA task ID
-        if (linkedAivaTaskIds.has(t._id)) return false;
-
-        // Fallback: Fuzzy match by Title
-        // If there's a Google Task with the EXACT same title, assume it's the synced version and hide local
-        const hasTitleMatch = googleTasks.some(gt =>
-          gt.title?.trim() === t.title?.trim()
-        );
-        if (hasTitleMatch) return false;
-
-        return true;
-      })
-      .map(aivaTask => ({
-        ...aivaTask,
-        isGoogleTask: false,
-        syncedWithGoogle: false, // If it's here, it's NOT synced (or we'd have hidden it)
-        subtasks: aivaTask.subtasks || []
-      }));
-
-    return [...aivaTasks, ...googleTasks];
-  }, [tasks, externalTasks, workspaceId]);
+  // allTasks is the single source of truth
+  const allTasks = tasksData?.tasks || [];
 
 
   // Organize tasks by list and attach subtasks to parents
@@ -200,12 +125,11 @@ const TaskPage = () => {
 
       // Only add root-level tasks (tasks without parent)
       if (!task.parent) {
-        // For Google tasks, collect their subtasks
-        if (task.isGoogleTask) {
-          const subtasks = allTasks.filter(t => t.parent === (task.googleTaskId || task._id));
-          task.subtasks = subtasks;
-        }
-        tasksByList[listKey].tasks.push(task);
+        // For Google tasks, collect their subtasks — must spread to avoid mutating frozen RTK cache
+        const taskToAdd = task.isGoogleTask
+          ? { ...task, subtasks: allTasks.filter(t => t.parent === (task.googleTaskId || task._id)) }
+          : { ...task, subtasks: task.subtasks || [] };
+        tasksByList[listKey].tasks.push(taskToAdd);
       }
     });
 
@@ -378,7 +302,7 @@ const TaskPage = () => {
     navigate(`/tasks/${workspaceId}/task/${taskId}`);
   };
 
-  if (workspaceLoading || tasksLoading) {
+  if (workspaceLoading || tasksLoading || tasksFetching) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <LoadingSpinner size="lg" />

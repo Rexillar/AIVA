@@ -60,7 +60,10 @@ import {
   updateSubtask,
   completeSubtask,
   addTaskComment,
-  getTaskComments
+  getTaskComments,
+  trashCompletedTasks,
+  bulkMoveToTrash,
+  restoreAllTrashedTasks
 } from "../controllers/taskController.js";
 import asyncHandler from "express-async-handler";
 import User from "../models/user.js";
@@ -125,5 +128,15 @@ router.route('/:id/comment')
 
 router.route('/:id/comments')
   .get(protect, getTaskComments);
+
+// Batch operations
+router.route('/batch/trash-completed')
+  .post(protect, trashCompletedTasks);
+
+router.route('/batch/trash')
+  .post(protect, bulkMoveToTrash);
+
+router.route('/batch/restore-all')
+  .post(protect, restoreAllTrashedTasks);
 
 export default router;
