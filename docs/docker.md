@@ -1,116 +1,198 @@
-# Docker & AIVA
+# Docker Guide
 
-AIVA relies heavily on Docker to ensure a consistent, reproducible, and easy-to-manage environment for both users and developers.
+**Last Updated**: March 2026
 
-## Why Docker?
+AIVA supports full Docker containerization for development, testing, and production deployment.
 
-We chose Docker as our primary distribution and runtime mechanism for several reasons:
+---
 
-1.  **Consistency**: "It works on my machine" is a thing of the past. The environment is identical for every user.
-2.  **Dependencies**: Users don't need to install specific versions of Node.js, MongoDB, or other tools. Docker handles it all.
-3.  **Cleanliness**: AIVA runs in isolated containers, keeping your host system clean.
+## Project Docker Files
 
-## Docker Hub vs. GitHub
+```
+AIVA/
+├── client/Dockerfile           # Frontend container (Nginx-served React build)
+├── server/Dockerfile           # Backend container (Node.js)
+├── launcher/docker-compose.yml # Local launcher compose
+├── docker-hub/
+│   ├── docker-compose.yml      # Docker Hub deployment compose
+│   └── hub.env.example         # Example environment file
+└── docker/
+    ├── setup.sh                # Linux/Mac setup script
+    ├── setup.ps1               # Windows PowerShell setup script
+    ├── encrypt-env.js          # Encrypt .env files for safe storage
+    └── decrypt-env.js          # Decrypt .env at container startup
+```
 
-It represents an important distinction in our workflow:
+---
 
--   **GitHub** hosts the **Source Code**. This is where development happens. We do NOT commit build artifacts (like the `dist/` folders) here.
--   **Docker Hub** hosts the **Runnable Images**. These are pre-built, ready-to-run packages of the application.
+## Quick Start with Docker
 
-When you run `docker-compose up`, your system pulls these pre-built images from Docker Hub (unless you explicitly build locally).
+### 1. Configure Environment
+```bash
+cp docker-hub/hub.env.example .env
+```
 
-## Helper Scripts
+Edit `.env` with your values (see [Configuration](./configuration.md)):
+```env
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/aiva
+JWT_SECRET=your-secret
+ENCRYPTION_KEY=your-64-char-hex-key
+GEMINI_API_KEY=your-gemini-key
+```
 
-To make things easier, we provide setup scripts that handle environment validation, secret decryption, and building:
+### 2. Build & Run
+```bash
+docker-compose up --build
+```
 
--   **Windows**: `docker/setup.ps1`
--   **Linux/Mac**: `docker/setup.sh`
+Or use the Docker Hub images (pre-built):
+```bash
+cd docker-hub
+docker-compose up
+```
 
-**Usage (Windows):**
+### 3. Access
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:5000/api
+
+---
+
+## Dockerfiles
+
+### Client Dockerfile
+Multi-stage build:
+1. **Build stage**: `node:18-alpine` — installs deps, runs `npm run build`
+2. **Serve stage**: `nginx:alpine` — serves static files with custom `nginx.conf`
+
+The Nginx config (`client/nginx.conf`) handles:
+- SPA routing (all paths → `index.html`)
+- API proxy pass to backend container
+- Gzip compression
+- Static asset caching
+
+### Server Dockerfile
+Single-stage `node:18-alpine`:
+- Installs production dependencies
+- Copies server source
+- Exposes port 5000
+- Runs `node index.js`
+
+---
+
+## Docker Compose
+
+### Development Compose (`launcher/docker-compose.yml`)
+Includes:
+- **client** — React dev server with hot reload
+- **server** — Node.js with file watching
+- **mongo** — MongoDB local instance (optional)
+
+### Production Compose (`docker-hub/docker-compose.yml`)
+Includes:
+- **client** — Nginx serving production build
+- **server** — Node.js production server
+- Environment variables from `.env` file
+
+---
+
+## Environment Encryption
+
+For secure environment distribution, AIVA includes encryption utilities:
+
+### Encrypt `.env`
+```bash
+node docker/encrypt-env.js
+```
+Prompts for a passphrase and encrypts `.env` → `.env.encrypted`
+
+### Decrypt `.env`
+```bash
+node docker/decrypt-env.js
+```
+Prompts for the passphrase and decrypts `.env.encrypted` → `.env`
+
+### Usage in CI/CD
+1. Encrypt locally: `node docker/encrypt-env.js`
+2. Commit `.env.encrypted` (safe — encrypted with AES)
+3. In CI/CD pipeline: `node docker/decrypt-env.js` with the passphrase as a secret
+4. Container starts with decrypted `.env`
+
+---
+
+## Setup Scripts
+
+### Linux/Mac
+```bash
+chmod +x docker/setup.sh
+./docker/setup.sh
+```
+
+### Windows (PowerShell)
 ```powershell
-./docker/setup.ps1
+.\docker\setup.ps1
 ```
 
-## Standard Commands
+These scripts:
+1. Check Docker installation
+2. Create `.env` from template if not present
+3. Build and start containers
+4. Verify services are healthy
 
-Here are the most common Docker commands you'll use with AIVA:
+---
 
-### Start AIVA
-Run the application in the background (detached mode):
+## Common Docker Commands
+
 ```bash
+# Build and start all services
+docker-compose up --build
+
+# Start in background
 docker-compose up -d
-```
 
-### view Logs
-See what's happening inside the containers:
-```bash
-docker-compose logs -f
-```
+# View logs
+docker-compose logs -f server
+docker-compose logs -f client
 
-### Stop AIVA
-Stop and remove the containers:
-```bash
+# Stop all services
 docker-compose down
+
+# Rebuild a specific service
+docker-compose up --build server
+
+# Remove all data (⚠️ destructive)
+docker-compose down -v
+
+# Shell into a running container
+docker-compose exec server sh
+docker-compose exec client sh
 ```
 
-### Rebuild Locally
-If you are developing and want to force a rebuild of your local changes:
-```bash
-docker-compose up -d --build
-```
+---
 
-## 🚢 Deployment to Docker Hub
+## Production Deployment
 
-This section explains how to prepare your application for production and push it to Docker Hub.
+### Using Docker Hub Images
 
-### 1. Secure Your Environment
-Before deploying, you must secure your sensitive environment variables (like database passwords and API keys). AIVA provides tools to encrypt your `.env` file.
+1. Pull pre-built images from Docker Hub
+2. Configure `docker-hub/docker-compose.yml` with your environment
+3. Run `docker-compose up -d`
 
-**Encrypt your environment:**
-**Encrypt your environment:**
-Run this command from the *project root* directory:
-```bash
-node docker/encrypt-env.js "YourStrongPassword"
-```
-*This acts as a pre-deployment step to ensure secrets are safe.*
+See [docker-hub/INSTRUCTIONS.md](../docker-hub/INSTRUCTIONS.md) for detailed Docker Hub deployment instructions.
 
-### 2. Build Production Images
-Build the Docker images for both the client and server.
+### Environment Variables in Production
+- Use Docker secrets or encrypted `.env` files
+- Never commit plain-text `.env` files
+- Set `NODE_ENV=production` for the server
+- Ensure `CORS_ORIGIN` matches your production frontend URL
 
-```bash
-docker-compose build
-```
+---
 
-### 3. Tag & Push to Docker Hub
+## Troubleshooting
 
-Once built, you need to tag your images with your Docker Hub username and push them.
-
-**Login to Docker Hub:**
-```bash
-docker login
-```
-
-**Tag and Push (Example):**
-Replace `yourusername` with your actual Docker Hub username.
-
-```bash
-# Tag the images
-docker tag aiva-client yourusername/aiva-client:latest
-docker tag aiva-server yourusername/aiva-server:latest
-
-# Push to Docker Hub
-docker push yourusername/aiva-client:latest
-docker push yourusername/aiva-server:latest
-```
-
-### 4. Running in Production
-To run AIVA on a remote server using your new images, you just need your `docker-compose.yml` and your encrypted environment config.
-
-```bash
-# Pull the latest images
-docker-compose pull
-
-# Start the services
-docker-compose up -d
-```
-
+| Issue | Solution |
+|-------|---------|
+| MongoDB connection fails | Check `MONGODB_URI` is accessible from inside the container. For local MongoDB, use `host.docker.internal` instead of `localhost` |
+| CORS errors | Ensure `CORS_ORIGIN` in server `.env` matches the client URL |
+| Port conflicts | Change `PORT` mapping in docker-compose.yml |
+| Build fails on client | Clear `node_modules` and rebuild: `docker-compose build --no-cache client` |
+| Container restarts in loop | Check logs: `docker-compose logs server` — usually a missing env variable |
