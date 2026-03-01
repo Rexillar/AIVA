@@ -707,6 +707,7 @@ export const getExternalTasks = async (req, res) => {
                 allTasks.push({
                   _id: task.id, // Use Google task ID as _id
                   source: 'google-tasks',
+                  isGoogleTask: true,   // Required by TaskCard for badge rendering
                   googleAccountId: account.accountId,
                   googleTaskId: task.id,
                   googleTaskListId: list.id,
@@ -795,7 +796,7 @@ export const getExternalTasks = async (req, res) => {
 export const updateExternalTask = async (req, res) => {
   try {
     const { workspaceId, taskId } = req.params;
-    const { title, notes, dueDate, status, googleAccountId, googleTaskListId } = req.body;
+    const { title, notes, dueDate, status, priority, googleAccountId, googleTaskListId } = req.body;
     const userId = req.user._id.toString();
 
     console.log('[updateExternalTask] Updating task:', { taskId, googleAccountId, googleTaskListId });
@@ -869,6 +870,31 @@ export const updateExternalTask = async (req, res) => {
 
     console.log('[updateExternalTask] Task updated successfully in Google');
 
+    // Update the local ExternalTask record with priority and other AIVA-specific fields
+    const localTask = await ExternalTask.findOne({
+      googleTaskId: taskId,
+      workspaceId
+    });
+
+    if (localTask) {
+      if (title !== undefined) localTask.title = title;
+      if (notes !== undefined) {
+        localTask.notes = notes;
+        localTask.description = notes;
+      }
+      if (dueDate !== undefined) {
+        localTask.dueDate = dueDate ? new Date(dueDate) : null;
+      }
+      if (status !== undefined) localTask.status = status;
+      if (priority !== undefined) localTask.priority = priority;
+      
+      localTask.lastSyncedAt = new Date();
+      localTask.syncStatus = 'synced';
+      await localTask.save();
+      
+      console.log('[updateExternalTask] Local task updated with priority:', priority);
+    }
+
     // Return the updated task in our format
     const taskResponse = {
       _id: updatedTask.data.id,
@@ -883,6 +909,7 @@ export const updateExternalTask = async (req, res) => {
       dueDate: updatedTask.data.due ? new Date(updatedTask.data.due) : null,
       completedDate: updatedTask.data.completed ? new Date(updatedTask.data.completed) : null,
       status: updatedTask.data.status === 'completed' ? 'completed' : 'needsAction',
+      priority: priority || 'medium',
 
       colorCode: '#4285F4',
       canEdit: true,
@@ -898,6 +925,99 @@ export const updateExternalTask = async (req, res) => {
   } catch (error) {
     console.error('Error updating external task:', error);
     res.status(500).json({ error: 'Failed to update task' });
+  }
+};
+
+/**
+ * @desc    Create a subtask (child task) for a Google Task
+ * @route   POST /api/google/tasks/:workspaceId/:taskId/subtask
+ * @access  Private
+ */
+export const createGoogleSubtask = async (req, res) => {
+  try {
+    const { workspaceId, taskId } = req.params;
+    const { title, googleAccountId, googleTaskListId, googleTaskId } = req.body;
+    const userId = req.user._id.toString();
+
+    if (!title?.trim()) {
+      return res.status(400).json({ error: 'Subtask title is required' });
+    }
+    if (!googleAccountId || !googleTaskListId || !googleTaskId) {
+      return res.status(400).json({
+        error: 'Missing required fields: googleAccountId, googleTaskListId, googleTaskId'
+      });
+    }
+
+    // Verify workspace access
+    const workspace = await Workspace.findById(workspaceId);
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace.members.some(m => m.user && m.user.toString() === userId)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get Google integration
+    const integration = await GoogleIntegration.findOne({ workspaceId });
+    if (!integration) return res.status(404).json({ error: 'Google integration not found' });
+
+    const account = integration.accounts.find(acc => acc.accountId === googleAccountId);
+    if (!account) return res.status(404).json({ error: 'Google account not found' });
+
+    // Refresh token if expired
+    if (googleAuthService.isTokenExpired(account.tokenExpiry)) {
+      const refreshed = await googleAuthService.refreshAccessToken(account.refreshToken);
+      account.accessToken = googleAuthService.encrypt(refreshed.accessToken);
+      account.tokenExpiry = refreshed.expiryDate;
+      await integration.save();
+    }
+
+    const auth = googleAuthService.getAuthenticatedClient(account.accessToken, account.refreshToken);
+    const tasks = google.tasks({ version: 'v1', auth });
+
+    // Create the child task in Google Tasks with parent reference
+    const newGoogleTask = await tasks.tasks.insert({
+      tasklist: googleTaskListId,
+      parent: googleTaskId,  // This makes it a subtask in Google Tasks
+      requestBody: {
+        title: title.trim(),
+        status: 'needsAction'
+      }
+    });
+
+    const newTaskData = newGoogleTask.data;
+
+    // Store as ExternalTask in MongoDB so it persists and appears in the task list
+    const ExternalTask = (await import('../models/externalTask.js')).default;
+    const externalSubtask = await ExternalTask.create({
+      workspaceId,
+      source: 'google-tasks',
+      googleAccountId,
+      googleTaskId: newTaskData.id,
+      googleTaskListId,
+      googleTaskListName: account.syncSettings?.tasks?.listName || '',
+      title: title.trim(),
+      status: 'needsAction',
+      parent: googleTaskId,  // link to parent Google task ID
+      isReadOnly: account.syncSettings?.tasks?.syncDirection === 'read-only',
+      canEdit: account.syncSettings?.tasks?.syncDirection === 'bidirectional',
+      canDelete: account.syncSettings?.tasks?.syncDirection === 'bidirectional',
+      syncStatus: 'synced',
+      lastSyncedAt: new Date()
+    });
+
+    res.status(201).json({
+      success: true,
+      subtask: {
+        ...externalSubtask.toObject(),
+        _id: externalSubtask._id,
+        isGoogleTask: true,
+        googleTaskId: newTaskData.id,
+        completed: false
+      },
+      message: 'Subtask created in Google Tasks'
+    });
+  } catch (error) {
+    console.error('[createGoogleSubtask] Error:', error);
+    res.status(500).json({ error: 'Failed to create subtask in Google Tasks' });
   }
 };
 
@@ -956,31 +1076,42 @@ export const deleteExternalTask = async (req, res) => {
 
     const tasks = google.tasks({ version: 'v1', auth });
 
-    // Delete task directly from Google Tasks
+    // If taskId looks like a MongoDB ObjectId (24 hex chars), resolve the real Google task ID first
+    let googleTaskId = taskId;
+    const ExternalTask = (await import('../models/externalTask.js')).default;
+    if (/^[0-9a-fA-F]{24}$/.test(taskId)) {
+      const externalDoc = await ExternalTask.findById(taskId);
+      if (externalDoc?.googleTaskId) {
+        console.log('[deleteExternalTask] Resolved MongoDB ObjectId to googleTaskId:', externalDoc.googleTaskId);
+        googleTaskId = externalDoc.googleTaskId;
+      } else {
+        console.warn('[deleteExternalTask] Could not resolve MongoDB ObjectId to googleTaskId, using as-is');
+      }
+    }
+
+    // Delete task directly from Google Tasks using the resolved Google Task ID
     await tasks.tasks.delete({
       tasklist: googleTaskListId,
-      task: taskId
+      task: googleTaskId
     });
 
-    console.log('[deleteExternalTask] Task deleted from Google:', taskId);
+    console.log('[deleteExternalTask] Task deleted from Google:', googleTaskId);
 
     // Also mark the task as deleted/trashed in the local AIVA database
     try {
-      const ExternalTask = (await import('../models/externalTask.js')).default;
-
-      // Update with isTrash=true to ensure proper UI handling
+      // ExternalTask already imported above; look up by googleTaskId (resolved)
       const updatedTask = await ExternalTask.findOneAndUpdate(
         {
           workspaceId,
-          googleTaskId: taskId,
+          googleTaskId,   // ← use resolved Google task ID, not raw taskId param
           googleAccountId
         },
         {
           isDeleted: true,
-          isTrash: true, // Mark as trash so it can be recovered if needed
+          isTrash: true,
           deletedAt: new Date(),
           syncStatus: 'deleted',
-          status: 'deleted' // Ensure status reflects deletion
+          status: 'deleted'
         },
         { new: true }
       );
@@ -988,7 +1119,7 @@ export const deleteExternalTask = async (req, res) => {
       if (updatedTask) {
         console.log('[deleteExternalTask] Task marked as trash in AIVA database:', updatedTask._id);
       } else {
-        console.log('[deleteExternalTask] No local AIVA task found to mark as trash for Google Task:', taskId);
+        console.log('[deleteExternalTask] No local AIVA task found to mark as trash for Google Task:', googleTaskId);
       }
     } catch (dbError) {
       console.warn('[deleteExternalTask] Failed to update local database:', dbError.message);
@@ -1373,6 +1504,100 @@ export const cleanupStaleEvents = async (req, res) => {
   }
 };
 
+/**
+ * @desc    Create an instant Google Meet link
+ * @route   POST /api/google/meet/create/:workspaceId
+ * @access  Private
+ */
+export const createInstantMeet = async (req, res) => {
+  try {
+    const { workspaceId } = req.params;
+    const userId = req.user._id.toString();
+
+    // Verify workspace access
+    const workspace = await Workspace.findById(workspaceId);
+    if (!workspace) {
+      return res.status(404).json({ error: 'Workspace not found' });
+    }
+
+    if (!workspace.members.some(m => m.user && m.user.toString() === userId)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get Google integration
+    const integration = await GoogleIntegration.findOne({ workspaceId });
+    if (!integration) {
+      return res.status(404).json({ error: 'No Google integrations found' });
+    }
+
+    // Find first active account with Meet enabled
+    const account = integration.accounts.find(
+      acc => acc.status === 'active' && acc.syncSettings?.meet?.enabled !== false
+    );
+
+    if (!account) {
+      return res.status(404).json({ error: 'No active Google accounts with Meet enabled' });
+    }
+
+    // Refresh token if expired
+    if (googleAuthService.isTokenExpired(account.tokenExpiry)) {
+      const refreshed = await googleAuthService.refreshAccessToken(account.refreshToken);
+      account.accessToken = googleAuthService.encrypt(refreshed.accessToken);
+      account.tokenExpiry = refreshed.expiryDate;
+      await integration.save();
+    }
+
+    const auth = googleAuthService.getAuthenticatedClient(
+      account.accessToken,
+      account.refreshToken
+    );
+
+    const calendar = google.calendar({ version: 'v3', auth });
+
+    // Create a dummy event to generate a meeting link
+    const event = {
+      summary: `AIVA Instant Meet - ${workspace.name}`,
+      description: 'Instant meeting generated from AIVA Workspace.',
+      start: {
+        dateTime: new Date().toISOString(),
+      },
+      end: {
+        dateTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour duration
+      },
+      conferenceData: {
+        createRequest: {
+          requestId: `aiva-meet-${Date.now()}`,
+          conferenceSolutionKey: {
+            type: 'hangoutsMeet',
+          },
+        },
+      },
+    };
+
+    const response = await calendar.events.insert({
+      calendarId: 'primary',
+      conferenceDataVersion: 1,
+      resource: event,
+    });
+
+    const meetLink = response.data.hangoutLink;
+
+    if (!meetLink) {
+      throw new Error('Google Calendar API did not return a hangoutLink.');
+    }
+
+    res.json({
+      success: true,
+      meetLink,
+      accountEmail: account.googleEmail
+    });
+
+  } catch (error) {
+    console.error('Error creating instant meet:', error);
+    res.status(500).json({ error: error.message || 'Failed to create Google Meet' });
+  }
+};
+
 export default {
   getAuthUrl,
   handleCallback,
@@ -1384,7 +1609,9 @@ export default {
   getSyncStatus,
   getExternalTasks,
   updateExternalTask,
+  createGoogleSubtask,
   deleteExternalTask,
   proxyProfileImage,
-  cleanupStaleEvents
+  cleanupStaleEvents,
+  createInstantMeet
 };

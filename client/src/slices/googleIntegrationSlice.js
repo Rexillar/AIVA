@@ -142,6 +142,23 @@ export const triggerSync = createAsyncThunk(
   }
 );
 
+// Create Instant Google Meet
+export const createInstantMeet = createAsyncThunk(
+  "googleIntegration/createInstantMeet",
+  async (workspaceId, { rejectWithValue }) => {
+    try {
+      const response = await axios.post(
+        `${API_URL}/google/meet/create/${workspaceId}`,
+        {}, // No body needed for a simple create
+        { headers: getAuthHeader() }
+      );
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data || { error: error.message });
+    }
+  },
+);
+
 export const fetchSyncStatus = createAsyncThunk(
   'googleIntegration/fetchSyncStatus',
   async (workspaceId, { rejectWithValue }) => {

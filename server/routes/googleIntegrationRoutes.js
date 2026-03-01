@@ -48,9 +48,11 @@ import {
   getExternalTasks,
   getSyncStatus,
   updateExternalTask,
+  createGoogleSubtask,
   deleteExternalTask,
   proxyProfileImage,
-  cleanupStaleEvents
+  cleanupStaleEvents,
+  createInstantMeet
 } from '../controllers/googleIntegrationController.js';
 import { protect } from '../middlewares/authMiddleware.js';
 
@@ -75,6 +77,7 @@ router.get('/tasks/:workspaceId', protect, getExternalTasks);
 
 // Task manipulation
 router.put('/tasks/:workspaceId/:taskId', protect, updateExternalTask);
+router.post('/tasks/:workspaceId/:taskId/subtask', protect, createGoogleSubtask);
 router.delete('/tasks/:workspaceId/:taskId', protect, deleteExternalTask);
 
 // Image proxy to bypass CORS
@@ -82,5 +85,8 @@ router.get('/proxy-image', proxyProfileImage);
 
 // Cleanup stale events
 router.delete('/events/:workspaceId/cleanup', protect, cleanupStaleEvents);
+
+// Meet Integration
+router.post('/meet/create/:workspaceId', protect, createInstantMeet);
 
 export default router;
