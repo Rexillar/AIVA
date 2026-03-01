@@ -40,11 +40,10 @@ const API_BASE_URL = '/api';
 
 // Helper function to get auth headers
 const getAuthHeaders = () => {
-  // Temporarily disabled for testing
-  // const token = localStorage.getItem('token');
+  const token = localStorage.getItem('token');
   return {
     'Content-Type': 'application/json',
-    // 'Authorization': token ? `Bearer ${token}` : '',
+    'Authorization': token ? `Bearer ${token}` : '',
   };
 };
 

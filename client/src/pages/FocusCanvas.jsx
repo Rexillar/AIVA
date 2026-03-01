@@ -38,6 +38,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import React from 'react';
+import { useParams } from 'react-router-dom';
 /* eslint-disable react-hooks/exhaustive-deps */
 import * as fabric from 'fabric';
 import {
@@ -102,6 +103,7 @@ const ShapePentagon = () => (
 );
 
 const Canvas = () => {
+  const { workspaceId } = useParams();
   // Multi-canvas state - now loaded from API
   const [canvases, setCanvases] = useState([]);
   const [activeCanvasId, setActiveCanvasId] = useState(null);
@@ -127,8 +129,6 @@ const Canvas = () => {
   const [contextMenu, setContextMenu] = useState(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showShapeMenu, setShowShapeMenu] = useState(false);
-  const [frames, setFrames] = useState([]);
-  const [isCreatingFrame, setIsCreatingFrame] = useState(false);
   const [showAIDialog, setShowAIDialog] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [selectedObjects, setSelectedObjects] = useState([]);
@@ -335,7 +335,8 @@ const Canvas = () => {
       const canvasNumber = canvases.length + 1;
       const response = await createCanvasAPI({
         name: `Canvas ${canvasNumber}`,
-        data: null
+        data: null,
+        workspaceId
       });
 
       if (response.success) {
@@ -480,12 +481,6 @@ const Canvas = () => {
           easing: fabric.util.ease.easeOutCubic,
         });
 
-        // Auto-resize frames when contained objects are modified
-        frames.forEach(frame => {
-          if (frame.metadata && frame.metadata.type === 'frame' && frame.metadata.autoResize) {
-            updateFrameSize(frame);
-          }
-        });
       }
     });
 
@@ -827,7 +822,7 @@ const Canvas = () => {
     const loadCanvases = async () => {
       try {
         setLoading(true);
-        const response = await getCanvasesAPI();
+        const response = await getCanvasesAPI(workspaceId);
         if (response.success && response.data.length > 0) {
           setCanvases(response.data);
           setActiveCanvasId(response.data[0]._id);
@@ -837,7 +832,8 @@ const Canvas = () => {
             const canvasNumber = 1;
             const newCanvasResponse = await createCanvasAPI({
               name: `Canvas ${canvasNumber}`,
-              data: null
+              data: null,
+              workspaceId
             });
 
             if (newCanvasResponse.success) {
@@ -875,18 +871,6 @@ const Canvas = () => {
       if (activeCanvasData) {
         try {
           fabricCanvas.current.loadFromJSON(activeCanvasData, () => {
-            // After loading, ensure frames are at the back and non-selectable
-            const objects = fabricCanvas.current.getObjects();
-            objects.forEach(obj => {
-              if (obj.metadata && obj.metadata.type === 'frame') {
-                fabricCanvas.current.sendToBack(obj);
-                obj.set({
-                  selectable: false,
-                  hasControls: false,
-                  evented: false
-                });
-              }
-            });
             if (fabricCanvas.current && !fabricCanvas.current.disposed && typeof fabricCanvas.current.renderAll === 'function') {
               fabricCanvas.current.renderAll();
             }
@@ -1705,7 +1689,6 @@ const Canvas = () => {
     animateShapeCreation(group);
     saveToHistory();
   }, [selectedColor, saveToHistory, snapToGridValue, isDarkMode, findOptimalPosition, animateShapeCreation]);
-  // Frame/Container creation with auto-resize capability
   const addParallelogramAt = useCallback((x, y) => {
     if (!fabricCanvas.current) return;
 
@@ -2264,139 +2247,6 @@ const Canvas = () => {
     saveToHistory();
   }, [selectedColor, saveToHistory, snapToGridValue, findOptimalPosition, animateShapeCreation]);
 
-  const createFrame = useCallback((x, y, width = 400, height = 300) => {
-    if (!fabricCanvas.current) return;
-
-    const position = (x === undefined || y === undefined)
-      ? findOptimalPosition(width, height)
-      : { x: snapToGridValue(x), y: snapToGridValue(y) };
-
-    // Create frame background
-    const frameRect = new fabric.Rect({
-      left: position.x - width / 2,
-      top: position.y - height / 2,
-      width: width,
-      height: height,
-      fill: isDarkMode ? 'rgba(42, 42, 42, 0.3)' : 'rgba(255, 255, 255, 0.3)',
-      stroke: isDarkMode ? '#666666' : '#cccccc',
-      strokeWidth: 2,
-      strokeDashArray: [10, 5],
-      rx: 12,
-      ry: 12,
-      selectable: true,
-      hasControls: true,
-      shadow: {
-        color: 'rgba(0, 0, 0, 0.1)',
-        blur: 15,
-        offsetX: 0,
-        offsetY: 3,
-      },
-    });
-
-    // Create frame label
-    const frameLabel = new fabric.IText('Frame', {
-      left: position.x - width / 2 + 15,
-      top: position.y - height / 2 + 10,
-      fontSize: 14,
-      fill: isDarkMode ? '#e0e0e0' : '#666666',
-      fontFamily: 'Inter, system-ui, sans-serif',
-      fontWeight: 600,
-      selectable: false,
-      evented: false,
-    });
-
-    // Group frame elements
-    const frame = new fabric.Group([frameRect, frameLabel], {
-      left: position.x - width / 2,
-      top: position.y - height / 2,
-      selectable: false, // Make frames non-selectable by default
-      hasControls: false,
-      evented: false, // Don't respond to events by default
-      metadata: {
-        type: 'frame',
-        frameId: `frame_${Date.now()}`,
-        containedObjects: [],
-        autoResize: true,
-      },
-    });
-
-    fabricCanvas.current.add(frame);
-
-    // Send frames to the back (lowest z-index) as background elements
-    fabricCanvas.current.sendToBack(frame);
-
-    // Don't set frame as active immediately to keep it in background
-    // fabricCanvas.current.setActiveObject(frame);
-
-    // Store frame reference
-    setFrames(prev => [...prev, frame]);
-    saveToHistory();
-
-    return frame;
-  }, [isDarkMode, findOptimalPosition, snapToGridValue, saveToHistory]);
-
-  // Check if object is inside frame
-  const isObjectInsideFrame = useCallback((obj, frame) => {
-    const objBounds = obj.getBoundingRect();
-    const frameBounds = frame.getBoundingRect();
-
-    return (
-      objBounds.left >= frameBounds.left &&
-      objBounds.top >= frameBounds.top &&
-      objBounds.left + objBounds.width <= frameBounds.left + frameBounds.width &&
-      objBounds.top + objBounds.height <= frameBounds.top + frameBounds.height
-    );
-  }, []);
-
-  // Auto-resize frame based on contained objects
-  const updateFrameSize = useCallback((frame) => {
-    if (!frame || !frame.metadata || frame.metadata.type !== 'frame') return;
-    if (!frame.metadata.autoResize) return;
-
-    const objects = fabricCanvas.current.getObjects().filter(obj =>
-      obj !== frame &&
-      obj !== gridRef.current &&
-      obj.selectable !== false &&
-      isObjectInsideFrame(obj, frame)
-    );
-
-    if (objects.length === 0) return;
-
-    // Calculate bounding box of all contained objects
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
-    objects.forEach(obj => {
-      const bounds = obj.getBoundingRect();
-      minX = Math.min(minX, bounds.left);
-      minY = Math.min(minY, bounds.top);
-      maxX = Math.max(maxX, bounds.left + bounds.width);
-      maxY = Math.max(maxY, bounds.top + bounds.height);
-    });
-
-    // Add padding
-    const padding = 40;
-    const newLeft = minX - padding;
-    const newTop = minY - padding;
-    const newWidth = maxX - minX + padding * 2;
-    const newHeight = maxY - minY + padding * 2;
-
-    // Update frame size
-    const frameRect = frame.getObjects()[0];
-    frameRect.set({
-      left: newLeft,
-      top: newTop,
-      width: newWidth,
-      height: newHeight,
-    });
-
-    frame.set({
-      left: newLeft,
-      top: newTop,
-    });
-
-    fabricCanvas.current.renderAll();
-  }, [isObjectInsideFrame]);
-
   // Layer/Z-index management functions
   const bringToFront = useCallback(() => {
     const activeObject = fabricCanvas.current?.getActiveObject();
@@ -2611,10 +2461,7 @@ const Canvas = () => {
             e.preventDefault();
             addStickyNote();
             break;
-          case 'f':
-            e.preventDefault();
-            setActiveTool('frame');
-            break;
+
           case 'g':
             e.preventDefault();
             groupSelected();
@@ -2654,7 +2501,6 @@ const Canvas = () => {
     const diagramData = {
       nodes: [],
       connections: [],
-      frames: [],
       metadata: {
         canvasSize: {
           width: fabricCanvas.current.width,
@@ -2690,9 +2536,7 @@ const Canvas = () => {
       }
 
       // Categorize by type
-      if (obj.metadata?.type === 'frame') {
-        diagramData.frames.push(baseData);
-      } else if (obj.metadata?.type === 'arrow' || obj.type === 'path') {
+      if (obj.metadata?.type === 'arrow' || obj.type === 'path') {
         diagramData.connections.push(baseData);
       } else {
         diagramData.nodes.push(baseData);
@@ -2944,13 +2788,7 @@ const Canvas = () => {
           // Restore selectability for objects (use stored _prevSelectable when available)
           const objects = fabricCanvas.current.getObjects();
           objects.forEach(obj => {
-            if (obj.metadata && obj.metadata.type === 'frame') {
-              obj.set({
-                selectable: false,
-                hasControls: false,
-                evented: false
-              });
-            } else if (obj !== gridRef.current) {
+            if (obj !== gridRef.current) {
               const prev = obj.metadata && typeof obj.metadata._prevSelectable !== 'undefined' ? obj.metadata._prevSelectable : true;
               obj.set({
                 selectable: prev,
@@ -3006,8 +2844,8 @@ const Canvas = () => {
           try {
             fabricCanvas.current.getObjects().forEach(obj => {
               if (obj === gridRef.current) return;
-              // Keep frames and visual connections non-evented
-              if (obj.metadata && (obj.metadata.type === 'frame' || obj.metadata.type === 'connection')) {
+              // Keep visual connections non-evented
+              if (obj.metadata && obj.metadata.type === 'connection') {
                 obj.set({ selectable: false, evented: false });
               } else {
                 // store previous selectable state for later restoration
@@ -3044,7 +2882,7 @@ const Canvas = () => {
             }
 
             // only allow connecting shape groups (nodes)
-            if (target && target.type === 'group' && target.metadata && target.metadata.type !== 'frame' && target.metadata.type !== 'connection') {
+            if (target && target.type === 'group' && target.metadata && target.metadata.type !== 'connection') {
               if (!connectionStart) {
                 setConnectionStart(target);
                 // visual highlight with thicker stroke for better visibility
@@ -3075,50 +2913,15 @@ const Canvas = () => {
           fabricCanvas.current.on('mouse:down', handleConnectMouseDown);
           break;
         }
-        case 'frame': {
-          fabricCanvas.current.selection = true; // Allow selection
-          fabricCanvas.current.defaultCursor = 'crosshair';
 
-          // Make all frames selectable when frame tool is active
-          const objects = fabricCanvas.current.getObjects();
-          objects.forEach(obj => {
-            if (obj.metadata && obj.metadata.type === 'frame') {
-              obj.set({
-                selectable: true,
-                hasControls: true,
-                evented: true
-              });
-            }
-          });
-
-          fabricCanvas.current.on('mouse:down', (options) => {
-            const target = options.target;
-            if (target && target.metadata && target.metadata.type === 'frame') {
-              // Frame clicked - allow editing
-              return;
-            } else {
-              // Empty area clicked - create new frame
-              const pointer = fabricCanvas.current.getPointer(options.e);
-              createFrame(pointer.x, pointer.y);
-              setActiveTool('select'); // Return to select tool after creating frame
-            }
-          });
-          break;
-        }
         default: {
           fabricCanvas.current.selection = true;
           fabricCanvas.current.defaultCursor = 'default';
 
-          // Make frames non-selectable when not using frame tool and restore other objects
+          // Restore other objects
           const objects = fabricCanvas.current.getObjects();
           objects.forEach(obj => {
-            if (obj.metadata && obj.metadata.type === 'frame') {
-              obj.set({
-                selectable: false,
-                hasControls: false,
-                evented: false
-              });
-            } else if (obj !== gridRef.current) {
+            if (obj !== gridRef.current) {
               const prev = obj.metadata && typeof obj.metadata._prevSelectable !== 'undefined' ? obj.metadata._prevSelectable : true;
               obj.set({ selectable: prev, evented: true });
               if (obj.metadata && typeof obj.metadata._prevSelectable !== 'undefined') {
@@ -3135,7 +2938,7 @@ const Canvas = () => {
     } catch (error) {
       console.warn('Error handling tool change:', error);
     }
-  }, [activeTool, selectedShape, addRectangleAt, addCircleAt, addEllipseAt, addDiamondAt, addStarAt, addHeartAt, addArrow, addLine, addParallelogramAt, brushSize, selectedColor, connectionStart, saveToHistory, createFrame, connectionMode, createPersistentConnection]);
+  }, [activeTool, selectedShape, addRectangleAt, addCircleAt, addEllipseAt, addDiamondAt, addStarAt, addHeartAt, addArrow, addLine, addParallelogramAt, brushSize, selectedColor, connectionStart, saveToHistory, connectionMode, createPersistentConnection]);
 
   // Update brush settings when color or size changes (for pen/highlighter tools)
   useEffect(() => {
@@ -3162,33 +2965,6 @@ const Canvas = () => {
       updateAllConnections();
     };
 
-    const handleObjectModified = (e) => {
-      const obj = e.target;
-      // If a frame was modified, ensure it stays at the back
-      if (obj && obj.metadata && obj.metadata.type === 'frame') {
-        setTimeout(() => {
-          if (fabricCanvas.current && typeof fabricCanvas.current.sendToBack === 'function') {
-            fabricCanvas.current.sendToBack(obj);
-            fabricCanvas.current.renderAll();
-          }
-        }, 0);
-      }
-    };
-
-    const handleSelectionCreated = (e) => {
-      const obj = e.target;
-      // If a frame is selected, allow editing but keep it at back
-      if (obj && obj.metadata && obj.metadata.type === 'frame') {
-        // Keep frame at back even when selected
-        setTimeout(() => {
-          if (fabricCanvas.current && typeof fabricCanvas.current.sendToBack === 'function') {
-            fabricCanvas.current.sendToBack(obj);
-            fabricCanvas.current.renderAll();
-          }
-        }, 0);
-      }
-    };
-
     const handleObjectRemoved = (e) => {
       const removedObject = e.target;
       if (removedObject && removedObject.metadata?.nodeId) {
@@ -3212,16 +2988,12 @@ const Canvas = () => {
     fabricCanvas.current.on('object:moving', handleObjectMoving);
     fabricCanvas.current.on('object:scaling', handleObjectMoving);
     fabricCanvas.current.on('object:removed', handleObjectRemoved);
-    fabricCanvas.current.on('object:modified', handleObjectModified);
-    fabricCanvas.current.on('selection:created', handleSelectionCreated);
 
     return () => {
       if (fabricCanvas.current) {
         fabricCanvas.current.off('object:moving', handleObjectMoving);
         fabricCanvas.current.off('object:scaling', handleObjectMoving);
         fabricCanvas.current.off('object:removed', handleObjectRemoved);
-        fabricCanvas.current.off('object:modified', handleObjectModified);
-        fabricCanvas.current.off('selection:created', handleSelectionCreated);
       }
       clearTimeout(window.connectionUpdateTimeout);
     };
@@ -3453,7 +3225,6 @@ const Canvas = () => {
     { id: 'eraser', icon: FaEraser, label: 'Eraser', shortcut: 'E', action: () => setActiveTool('eraser') },
     { id: 'shape', icon: FaShapes, label: 'Shapes', shortcut: 'S', action: () => { setActiveTool('shape'); setShowShapeMenu(!showShapeMenu); } },
     { id: 'connect', icon: FaLink, label: 'Connect', shortcut: 'C', action: () => setActiveTool('connect') },
-    { id: 'frame', icon: FaTh, label: 'Frame', shortcut: 'F', action: () => setActiveTool('frame') },
     { id: 'text', icon: FaFont, label: 'Text', shortcut: 'T', action: addText },
     { id: 'sticky', icon: FaStickyNote, label: 'Sticky Note', shortcut: 'N', action: addStickyNote },
   ];

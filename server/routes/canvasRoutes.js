@@ -64,7 +64,7 @@ const canvasLimiter = rateLimit({
 router.use(canvasLimiter);
 
 // All routes require authentication
-// router.use(protect); // Temporarily disabled for testing
+router.use(protect);
 
 // @route   POST /api/canvas
 // @desc    Create a new canvas

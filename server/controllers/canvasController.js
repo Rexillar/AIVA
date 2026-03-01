@@ -50,13 +50,10 @@ const createCanvas = asyncHandler(async (req, res) => {
     throw new Error('Canvas name is required');
   }
 
-  // Temporary: use a dummy user ID for testing
-  const dummyUserId = '507f1f77bcf86cd799439011'; // A valid ObjectId for testing
-
   const canvas = await Canvas.create({
     name,
     data: data || null,
-    owner: dummyUserId, // req.user._id
+    owner: req.user._id,
     workspace: workspaceId || null
   });
 
@@ -76,10 +73,7 @@ const createCanvas = asyncHandler(async (req, res) => {
 const getCanvases = asyncHandler(async (req, res) => {
   const { workspaceId } = req.query;
 
-  // Temporary: use a dummy user ID for testing
-  const dummyUserId = '507f1f77bcf86cd799439011';
-
-  let query = { owner: dummyUserId, isDeleted: false }; // req.user._id
+  let query = { owner: req.user._id, isDeleted: false };
 
   if (workspaceId) {
     query.workspace = workspaceId;
@@ -101,12 +95,9 @@ const getCanvases = asyncHandler(async (req, res) => {
 // @route   GET /api/canvas/:id
 // @access  Private
 const getCanvasById = asyncHandler(async (req, res) => {
-  // Temporary: use a dummy user ID for testing
-  const dummyUserId = '507f1f77bcf86cd799439011';
-
   const canvas = await Canvas.findOne({
     _id: req.params.id,
-    owner: dummyUserId, // req.user._id
+    owner: req.user._id,
     isDeleted: false
   })
     .populate('owner', 'name email')
@@ -129,12 +120,9 @@ const getCanvasById = asyncHandler(async (req, res) => {
 const updateCanvas = asyncHandler(async (req, res) => {
   const { name, data } = req.body;
 
-  // Temporary: use a dummy user ID for testing
-  const dummyUserId = '507f1f77bcf86cd799439011';
-
   const canvas = await Canvas.findOne({
     _id: req.params.id,
-    owner: dummyUserId, // req.user._id
+    owner: req.user._id,
     isDeleted: false
   });
 
@@ -163,12 +151,9 @@ const updateCanvas = asyncHandler(async (req, res) => {
 // @route   DELETE /api/canvas/:id
 // @access  Private
 const deleteCanvas = asyncHandler(async (req, res) => {
-  // Temporary: use a dummy user ID for testing
-  const dummyUserId = '507f1f77bcf86cd799439011';
-
   const canvas = await Canvas.findOne({
     _id: req.params.id,
-    owner: dummyUserId, // req.user._id
+    owner: req.user._id,
     isDeleted: false
   });
 
@@ -191,12 +176,9 @@ const deleteCanvas = asyncHandler(async (req, res) => {
 // @route   DELETE /api/canvas/:id/permanent
 // @access  Private
 const permanentDeleteCanvas = asyncHandler(async (req, res) => {
-  // Temporary: use a dummy user ID for testing
-  const dummyUserId = '507f1f77bcf86cd799439011';
-
   const canvas = await Canvas.findOneAndDelete({
     _id: req.params.id,
-    owner: dummyUserId // req.user._id
+    owner: req.user._id
   });
 
   if (!canvas) {
@@ -214,12 +196,9 @@ const permanentDeleteCanvas = asyncHandler(async (req, res) => {
 // @route   PUT /api/canvas/:id/restore
 // @access  Private
 const restoreCanvas = asyncHandler(async (req, res) => {
-  // Temporary: use a dummy user ID for testing
-  const dummyUserId = '507f1f77bcf86cd799439011';
-
   const canvas = await Canvas.findOne({
     _id: req.params.id,
-    owner: dummyUserId, // req.user._id
+    owner: req.user._id,
     isDeleted: true
   });
 
@@ -246,11 +225,8 @@ const restoreCanvas = asyncHandler(async (req, res) => {
 // @route   GET /api/canvas/deleted
 // @access  Private
 const getDeletedCanvases = asyncHandler(async (req, res) => {
-  // Temporary: use a dummy user ID for testing
-  const dummyUserId = '507f1f77bcf86cd799439011';
-
   const canvases = await Canvas.find({
-    owner: dummyUserId, // req.user._id
+    owner: req.user._id,
     isDeleted: true
   })
     .populate('owner', 'name email')
