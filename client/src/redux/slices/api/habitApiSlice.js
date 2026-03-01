@@ -54,7 +54,7 @@ const baseQuery = fetchBaseQuery({
 export const habitApiSlice = createApi({
   reducerPath: "habitApi",
   baseQuery,
-  tagTypes: ["Habit"],
+  tagTypes: ["Habit", "WorkspaceHabits"],
   endpoints: (builder) => ({
     getHabits: builder.query({
       query: (arg) => {
@@ -68,7 +68,11 @@ export const habitApiSlice = createApi({
         return `/habits/workspace/${workspaceId}?${params.toString()}`;
       },
       transformResponse: (response) => response.data,
-      providesTags: ["Habit"],
+      providesTags: (result, error, arg) => [
+        { type: "WorkspaceHabits", id: arg.workspaceId },
+        "Habit",
+        ...(result ? result.map(habit => ({ type: "Habit", id: habit._id })) : []),
+      ],
     }),
     createHabit: builder.mutation({
       query: (habit) => {
@@ -89,7 +93,10 @@ export const habitApiSlice = createApi({
           body: habitData,
         };
       },
-      invalidatesTags: ["Habit"],
+      invalidatesTags: (result, error, habit) => [
+        { type: "WorkspaceHabits", id: habit.workspace },
+        "Habit",
+      ],
     }),
     updateHabit: builder.mutation({
       query: ({ id, ...updates }) => ({
@@ -97,19 +104,30 @@ export const habitApiSlice = createApi({
         method: "PUT",
         body: updates,
       }),
-      invalidatesTags: ["Habit"],
+      invalidatesTags: (result, error, { id }) => [
+        { type: "Habit", id },
+        "Habit",
+        "WorkspaceHabits",
+      ],
     }),
     deleteHabit: builder.mutation({
       query: (id) => ({
         url: `/habits/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Habit"],
+      invalidatesTags: (result, error, id) => [
+        { type: "Habit", id },
+        "Habit",
+        "WorkspaceHabits",
+      ],
     }),
     getHabitsDueToday: builder.query({
       query: (arg) => `/habits/due-today?workspaceId=${arg.workspaceId}`,
       transformResponse: (response) => response.data,
-      providesTags: ["Habit"],
+      providesTags: (result, error, arg) => [
+        { type: "WorkspaceHabits", id: arg.workspaceId },
+        "Habit",
+      ],
     }),
     toggleHabitCompletion: builder.mutation({
       query: ({ id, date, note }) => ({
@@ -124,26 +142,41 @@ export const habitApiSlice = createApi({
         } catch (error) {
         }
       },
-      invalidatesTags: ["Habit"],
+      invalidatesTags: (result, error, { id }) => [
+        { type: "Habit", id },
+        "Habit",
+        "WorkspaceHabits",
+      ],
     }),
     getUserHabitAnalytics: builder.query({
       query: (arg) => `/habits/analytics/user?workspaceId=${arg.workspaceId}`,
       transformResponse: (response) => response.data,
-      providesTags: ["Habit"],
+      providesTags: (result, error, arg) => [
+        { type: "WorkspaceHabits", id: arg.workspaceId },
+        "Habit",
+      ],
     }),
     trashHabit: builder.mutation({
       query: (id) => ({
         url: `/habits/${id}/trash`,
         method: "PATCH",
       }),
-      invalidatesTags: ["Habit"],
+      invalidatesTags: (result, error, id) => [
+        { type: "Habit", id },
+        "Habit",
+        "WorkspaceHabits",
+      ],
     }),
     restoreHabit: builder.mutation({
       query: (id) => ({
         url: `/habits/${id}/restore`,
         method: "PATCH",
       }),
-      invalidatesTags: ["Habit"],
+      invalidatesTags: (result, error, id) => [
+        { type: "Habit", id },
+        "Habit",
+        "WorkspaceHabits",
+      ],
     }),
     pauseHabit: builder.mutation({
       query: (id) => ({
@@ -151,7 +184,11 @@ export const habitApiSlice = createApi({
         method: "PATCH",
         body: { paused: true },
       }),
-      invalidatesTags: ["Habit"],
+      invalidatesTags: (result, error, id) => [
+        { type: "Habit", id },
+        "Habit",
+        "WorkspaceHabits",
+      ],
     }),
     addHabitNote: builder.mutation({
       query: ({ id, note }) => ({
@@ -159,7 +196,11 @@ export const habitApiSlice = createApi({
         method: "PATCH",
         body: { note },
       }),
-      invalidatesTags: ["Habit"],
+      invalidatesTags: (result, error, { id }) => [
+        { type: "Habit", id },
+        "Habit",
+        "WorkspaceHabits",
+      ],
     }),
     deleteHabitNote: builder.mutation({
       query: (id) => ({
@@ -167,25 +208,38 @@ export const habitApiSlice = createApi({
         method: "PATCH",
         body: { note: null },
       }),
-      invalidatesTags: ["Habit"],
+      invalidatesTags: (result, error, id) => [
+        { type: "Habit", id },
+        "Habit",
+        "WorkspaceHabits",
+      ],
     }),
     getHabitById: builder.query({
       query: (arg) =>
         `/habits/${arg.id}?workspaceId=${encodeURIComponent(arg.workspaceId)}`,
       transformResponse: (response) => response.data,
-      providesTags: ["Habit"],
+      providesTags: (result, error, arg) => [
+        { type: "Habit", id: arg.id },
+        { type: "WorkspaceHabits", id: arg.workspaceId },
+      ],
     }),
     getHabitHistory: builder.query({
       query: (arg) =>
         `/habits/${arg.id}/history?workspaceId=${encodeURIComponent(arg.workspaceId)}`,
       transformResponse: (response) => response.data,
-      providesTags: ["Habit"],
+      providesTags: (result, error, arg) => [
+        { type: "Habit", id: arg.id },
+        { type: "WorkspaceHabits", id: arg.workspaceId },
+      ],
     }),
     getHabitStatistics: builder.query({
       query: (arg) =>
         `/habits/${arg.id}/statistics?workspaceId=${encodeURIComponent(arg.workspaceId)}`,
       transformResponse: (response) => response.data,
-      providesTags: ["Habit"],
+      providesTags: (result, error, arg) => [
+        { type: "Habit", id: arg.id },
+        { type: "WorkspaceHabits", id: arg.workspaceId },
+      ],
     }),
   }),
 });
