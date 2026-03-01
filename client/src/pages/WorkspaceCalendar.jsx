@@ -61,7 +61,7 @@ import {
   FaUserPlus,
   FaUsers,
 } from "react-icons/fa";
-import { useGetWorkspaceMembersQuery } from "../redux/slices/api/workspaceApiSlice";
+import { useGetWorkspaceMembersQuery, useGetWorkspaceQuery } from "../redux/slices/api/workspaceApiSlice";
 import { toast, Toaster } from "react-hot-toast";
 import { fetchExternalEvents } from "../slices/externalEventsSlice";
 
@@ -104,10 +104,14 @@ const WorkspaceCalendar = () => {
     (state) => state.externalEvents
   );
 
+  // Workspace type detection
+  const { data: workspace } = useGetWorkspaceQuery(workspaceId);
+  const isPublic = workspace?.type === "PublicWorkspace" || workspace?.visibility === "public";
+
   const { data: workspaceData, isLoading: isLoadingTasks } =
     useGetWorkspaceTasksQuery({ workspaceId });
   const { data: membersData, isLoading: isLoadingMembers } =
-    useGetWorkspaceMembersQuery(workspaceId);
+    useGetWorkspaceMembersQuery(workspaceId, { skip: !isPublic });
   const [updateTask] = useUpdateTaskMutation();
 
   // Fetch external events from Google Calendar when component mounts
@@ -919,8 +923,8 @@ const WorkspaceCalendar = () => {
                           </>
                         )}
 
-                        {/* Assigned Members Section - Only for AIVA tasks/subtasks */}
-                        {selectedEvent.extendedProps.type !== "external" && (
+                        {/* Assigned Members Section - Only for AIVA tasks in public workspaces */}
+                        {isPublic && selectedEvent.extendedProps.type !== "external" && (
                           <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
                             <div className="flex items-center justify-between mb-4">
                               <div className="flex items-center gap-2">
@@ -978,8 +982,8 @@ const WorkspaceCalendar = () => {
                           </div>
                         )}
 
-                        {/* Member Assignment Modal - Only for AIVA tasks */}
-                        {selectedEvent.extendedProps.type !== "external" && (
+                        {/* Member Assignment Modal - Only for public workspace AIVA tasks */}
+                        {isPublic && selectedEvent.extendedProps.type !== "external" && (
                           <Transition
                             appear
                             show={isAssigningMembers}

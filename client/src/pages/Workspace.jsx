@@ -43,11 +43,11 @@ import { useWorkspace } from "../components/workspace/provider/WorkspaceProvider
 import { setCurrentWorkspace } from "../redux/slices/workspaceSlice";
 import { LoadingSpinner } from "../components/shared/feedback/LoadingSpinner";
 import {
-  FaTasks,
   FaStickyNote,
   FaCalendar,
   FaUsers,
   FaChartLine,
+  FaVideo,
 } from "react-icons/fa";
 import { useGetPublicWorkspacesQuery } from "../redux/slices/api/workspaceApiSlice";
 import PropTypes from "prop-types";
@@ -143,6 +143,12 @@ const Workspace = () => {
       description: "Schedule and track workspace events",
       icon: FaCalendar,
       path: `/workspace/${workspace._id}/calendar`,
+    },
+    {
+      title: "Meet",
+      description: "Start instant Google Meet calls",
+      icon: FaVideo,
+      path: `/workspace/${workspace._id}/meet`,
     },
     {
       title: "Team",

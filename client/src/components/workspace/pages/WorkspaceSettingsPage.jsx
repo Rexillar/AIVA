@@ -58,11 +58,11 @@ import { Dialog, Transition } from "@headlessui/react";
 import GoogleAccountManager from "../integrations/GoogleAccountManager";
 
 const SettingsSection = ({ title, icon: Icon, children }) => (
-  <div className="bg-gray-800/95 shadow-lg rounded-lg overflow-hidden backdrop-blur-sm border border-gray-700/50">
+  <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
     <div className="px-4 py-5 sm:p-6">
       <div className="flex items-center mb-4">
-        <Icon className="w-5 h-5 text-gray-400 mr-2" />
-        <h3 className="text-lg font-medium text-white">{title}</h3>
+        <Icon className="w-5 h-5 text-gray-500 dark:text-gray-400 mr-2" />
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white">{title}</h3>
       </div>
       {children}
     </div>
@@ -95,16 +95,16 @@ const DeleteDialog = ({ isOpen, onClose, onConfirm }) => (
             leaveFrom="opacity-100 scale-100"
             leaveTo="opacity-0 scale-95"
           >
-            <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-gray-800 p-6 text-left align-middle shadow-xl transition-all">
+            <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white dark:bg-gray-800 p-6 text-left align-middle shadow-xl transition-all border border-gray-200 dark:border-gray-700">
               <Dialog.Title
                 as="h3"
-                className="text-lg font-medium leading-6 text-white flex items-center"
+                className="text-lg font-medium leading-6 text-gray-900 dark:text-white flex items-center"
               >
-                <FaExclamationTriangle className="w-5 h-5 text-red-400 mr-2" />
+                <FaExclamationTriangle className="w-5 h-5 text-red-500 dark:text-red-400 mr-2" />
                 Move to Trash
               </Dialog.Title>
               <div className="mt-3">
-                <p className="text-sm text-gray-300">
+                <p className="text-sm text-gray-600 dark:text-gray-300">
                   Are you sure you want to move this workspace to trash? You can
                   restore it later from the trash section.
                 </p>
@@ -113,14 +113,14 @@ const DeleteDialog = ({ isOpen, onClose, onConfirm }) => (
               <div className="mt-6 flex justify-end space-x-3">
                 <button
                   type="button"
-                  className="inline-flex justify-center rounded-md border border-gray-600 bg-gray-700 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
+                  className="inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   onClick={onClose}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  className="inline-flex justify-center rounded-md border border-transparent bg-red-900 px-4 py-2 text-sm font-medium text-red-200 hover:bg-red-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+                  className="inline-flex justify-center rounded-md border border-transparent bg-red-600 dark:bg-red-900 px-4 py-2 text-sm font-medium text-white dark:text-red-200 hover:bg-red-700 dark:hover:bg-red-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                   onClick={onConfirm}
                 >
                   Move to Trash
@@ -313,14 +313,14 @@ const WorkspaceSettingsPage = () => {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Settings Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">Workspace Settings</h1>
-        <p className="mt-1 text-sm text-gray-400">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Workspace Settings</h1>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
           Manage your workspace preferences and configuration
         </p>
       </div>
 
       {/* Settings Navigation */}
-      <div className="flex space-x-1 mb-6 bg-gray-800/80 p-1 rounded-lg overflow-x-auto backdrop-blur-sm">
+      <div className="flex space-x-1 mb-6 bg-gray-100 dark:bg-gray-800/80 p-1 rounded-lg overflow-x-auto border border-gray-200 dark:border-gray-700">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -329,8 +329,8 @@ const WorkspaceSettingsPage = () => {
               flex items-center px-4 py-2 text-sm font-medium rounded-md whitespace-nowrap transition-all duration-200
               ${
                 activeTab === tab.id
-                  ? "bg-blue-500/20 text-blue-400 shadow-lg shadow-blue-500/20"
-                  : "text-gray-400 hover:text-gray-300 hover:bg-gray-700/50"
+                  ? "bg-blue-500 text-white shadow-lg"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300 hover:bg-white dark:hover:bg-gray-700/50"
               }
             `}
           >
@@ -346,7 +346,7 @@ const WorkspaceSettingsPage = () => {
           <SettingsSection title="General Settings" icon={FaCog}>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Workspace Name
                 </label>
                 <input
@@ -356,11 +356,11 @@ const WorkspaceSettingsPage = () => {
                   onChange={handleInputChange}
                   placeholder="Enter workspace name"
                   required
-                  className="mt-1 block w-full rounded-md bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-md bg-white dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Description
                 </label>
                 <textarea
@@ -369,21 +369,21 @@ const WorkspaceSettingsPage = () => {
                   onChange={handleInputChange}
                   placeholder="Enter workspace description"
                   rows={3}
-                  className="mt-1 block w-full rounded-md bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-md bg-white dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
-              <div className="flex justify-between items-center pt-4 border-t border-gray-700">
+              <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-700">
                 <button
                   type="button"
                   onClick={() => setIsDeleteDialogOpen(true)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-red-300 bg-red-900/30 hover:bg-red-900/50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition-colors duration-200"
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors duration-200"
                 >
                   <FaTrash className="w-4 h-4 mr-2" />
                   Move to Trash
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition-colors duration-200 shadow-lg shadow-blue-500/20"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 shadow-sm"
                 >
                   Save Changes
                 </button>
@@ -397,31 +397,31 @@ const WorkspaceSettingsPage = () => {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Working Hours Start
                   </label>
                   <input
                     type="time"
                     value={formData.workingHours.start}
                     onChange={(e) => handleTimeChange("start", e.target.value)}
-                    className="mt-1 block w-full rounded-md bg-gray-700/50 border-gray-600 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    className="mt-1 block w-full rounded-md bg-white dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Working Hours End
                   </label>
                   <input
                     type="time"
                     value={formData.workingHours.end}
                     onChange={(e) => handleTimeChange("end", e.target.value)}
-                    className="mt-1 block w-full rounded-md bg-gray-700/50 border-gray-600 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    className="mt-1 block w-full rounded-md bg-white dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Working Days
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -431,11 +431,11 @@ const WorkspaceSettingsPage = () => {
                       type="button"
                       onClick={() => handleDayToggle(day.id)}
                       className={`
-                        px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200
+                        px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 border
                         ${
                           formData.workingDays.includes(day.id)
-                            ? "bg-blue-500/20 text-blue-400 shadow-lg shadow-blue-500/20"
-                            : "bg-gray-700/50 text-gray-400 hover:bg-gray-700"
+                            ? "bg-blue-500 text-white border-blue-500 shadow-sm"
+                            : "bg-white dark:bg-gray-700/50 text-gray-700 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
                         }
                       `}
                     >
@@ -448,7 +448,7 @@ const WorkspaceSettingsPage = () => {
               <div className="flex justify-end">
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition-colors duration-200 shadow-lg shadow-blue-500/20"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 shadow-sm"
                 >
                   Save Changes
                 </button>
@@ -466,9 +466,9 @@ const WorkspaceSettingsPage = () => {
                   name="notifications"
                   checked={formData.notifications}
                   onChange={handleInputChange}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded"
                 />
-                <label className="ml-2 block text-sm text-gray-300">
+                <label className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
                   Enable workspace notifications
                 </label>
               </div>
@@ -477,7 +477,7 @@ const WorkspaceSettingsPage = () => {
         )}
 
         {activeTab === "integrations" && (
-          <div className="bg-gray-800/95 shadow-lg rounded-lg overflow-hidden backdrop-blur-sm border border-gray-700/50 p-6">
+          <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 p-6">
             <GoogleAccountManager workspaceId={workspaceId} />
           </div>
         )}
