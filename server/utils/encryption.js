@@ -212,6 +212,41 @@ export const encryptionPlugin = (schema, options = {}) => {
     }
   });
 
+  // Post-save hook to decrypt fields (so the returned document is readable)
+  schema.post('save', function (doc) {
+    try {
+      encryptedFields.forEach(fieldPath => {
+        if (fieldPath.includes('.')) {
+          // Handle nested fields
+          const parts = fieldPath.split('.');
+          const arrayPath = parts[0];
+          const nestedField = parts.slice(1).join('.');
+
+          const array = doc.get(arrayPath);
+
+          if (Array.isArray(array)) {
+            array.forEach(item => {
+              if (item && item[nestedField] !== undefined) {
+                const value = item[nestedField];
+                if (typeof value === 'string' && value && isEncrypted(value)) {
+                  item[nestedField] = FieldEncryption.decrypt(value);
+                }
+              }
+            });
+          }
+        } else {
+          // Handle top-level fields
+          const value = doc.get(fieldPath);
+          if (typeof value === 'string' && value && isEncrypted(value)) {
+            doc.set(fieldPath, FieldEncryption.decrypt(value), { strict: false });
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Decryption error in post-save hook:', error);
+    }
+  });
+
   // Post-init hook to decrypt fields when loading from database
   schema.post('init', function () {
     try {

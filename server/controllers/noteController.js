@@ -163,8 +163,23 @@ export const createNote = asyncHandler(async (req, res) => {
   }
 
   // Create note
+  let finalTitle = title;
+
+  // If title is the default "Untitled Note", use atomic incremental naming
+  if (title === 'Untitled Note' || title === 'Note') {
+    const updatedWorkspace = await Workspace.findByIdAndUpdate(
+      workspace,
+      { $inc: { noteSequence: 1 } },
+      { new: true }
+    );
+
+    if (updatedWorkspace) {
+      finalTitle = `Note ${updatedWorkspace.noteSequence}`;
+    }
+  }
+
   const note = await Note.create({
-    title,
+    title: finalTitle,
     content,
     workspace,
     creator: userId,
