@@ -275,11 +275,38 @@ export const encryptQuery = (query, encryptedFields = []) => {
 export const decryptDocument = (doc, encryptedFields = []) => {
   if (!doc) return doc;
 
+  // Work on a plain object (avoid calling toObject again if already plain)
   const decryptedDoc = doc.toObject ? doc.toObject() : { ...doc };
 
-  encryptedFields.forEach(field => {
-    if (decryptedDoc[field] && typeof decryptedDoc[field] === 'string') {
-      decryptedDoc[field] = FieldEncryption.decrypt(decryptedDoc[field]);
+  encryptedFields.forEach(fieldPath => {
+    if (fieldPath.includes('.')) {
+      // Handle nested fields like 'attachments.filename', 'versionHistory.content'
+      const parts = fieldPath.split('.');
+      const arrayPath = parts[0];
+      const nestedField = parts.slice(1).join('.');
+      const arr = decryptedDoc[arrayPath];
+
+      if (Array.isArray(arr)) {
+        arr.forEach(item => {
+          if (item && item[nestedField] !== undefined) {
+            const value = item[nestedField];
+            if (typeof value === 'string' && value) {
+              item[nestedField] = FieldEncryption.decrypt(value);
+            }
+          }
+        });
+      }
+    } else {
+      // Handle top-level fields
+      const value = decryptedDoc[fieldPath];
+      if (typeof value === 'string' && value) {
+        decryptedDoc[fieldPath] = FieldEncryption.decrypt(value);
+      } else if (Array.isArray(value)) {
+        // Handle array of strings (e.g., tags)
+        decryptedDoc[fieldPath] = value.map(v =>
+          typeof v === 'string' ? FieldEncryption.decrypt(v) : v
+        );
+      }
     }
   });
 

@@ -153,6 +153,19 @@ export const noteApiSlice = apiSlice.injectEndpoints({
         { type: "Note", id: noteId },
       ],
     }),
+
+    // AI Smart Format - parse & format unstructured text using Gemini
+    aiFormatContent: builder.mutation({
+      query: ({ noteId, text, outputFormat, customInstruction }) => ({
+        url: `${NOTES_URL}/${noteId}/ai-format`,
+        method: "POST",
+        body: { text, outputFormat, customInstruction },
+      }),
+      transformResponse: (response) => ({
+        status: response.status,
+        data: response.data,
+      }),
+    }),
   }),
   overrideExisting: false,
 });
@@ -164,4 +177,5 @@ export const {
   useUpdateNoteMutation,
   useDeleteNoteMutation,
   useShareNoteMutation,
+  useAiFormatContentMutation,
 } = noteApiSlice;

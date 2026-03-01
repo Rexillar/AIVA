@@ -114,11 +114,7 @@ const noteSchema = new mongoose.Schema(
       },
       comment: String,
     }],
-    isArchived: {
-      type: Boolean,
-      default: false,
-    },
-    isTrashed: {
+    isTrash: {
       type: Boolean,
       default: false,
     },
@@ -127,6 +123,11 @@ const noteSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedAt: Date,
     lastEditedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -152,7 +153,8 @@ const noteSchema = new mongoose.Schema(
 );
 
 // Indexes for better query performance
-noteSchema.index({ workspace: 1, isTrashed: 1 });
+noteSchema.index({ workspace: 1, isTrash: 1 });
+noteSchema.index({ workspace: 1, isDeleted: 1 });
 noteSchema.index({ creator: 1 });
 noteSchema.index({ "sharedWith.user": 1 });
 noteSchema.index({ tags: 1 });
