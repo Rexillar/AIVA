@@ -1,59 +1,157 @@
-# Getting Started with AIVA
+# Getting Started
 
-Get AIVA up and running on your local machine in under 10 minutes using Docker.
+**Last Updated**: March 2026
+
+Get AIVA running locally in under 10 minutes.
+
+---
 
 ## Prerequisites
 
-- **Docker**: You must have Docker installed and running.
-  - [Download Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows/Mac/Linux)
-- **Git**: To clone the repository.
+| Requirement | Version | Notes |
+|-------------|---------|-------|
+| Node.js | 18+ | LTS recommended |
+| npm | 9+ | Comes with Node.js |
+| MongoDB | 6+ | Atlas (cloud) or local instance |
+| Git | Any | For cloning the repo |
+| Docker | 24+ | **Optional** — for containerized setup |
 
-## Installation
+---
+
+## Quick Start (Non-Docker)
 
 ### 1. Clone the Repository
-
-Clone the source code from GitHub:
-
 ```bash
-git clone https://github.com/Rexillar/AIVA.git
-cd AIVA
+git clone https://github.com/your-org/aiva.git
+cd aiva
 ```
 
-### 2. Configure Environment
-
-AIVA comes with prepared example environment files. You simply need to verify they exist or create your own secrets file if necessary (usually handled automatically by Docker setup or scripts, but good to know).
-
-For a quick start, the repository includes `.env.docker` which is pre-configured for the Docker environment.
-
-### 3. Run with Docker Compose
-
-We use Docker Compose to orchestrate the backend, frontend, and database services.
-
-**To start AIVA:**
-
+### 2. Set Up the Backend
 ```bash
-docker-compose up -d
+cd server
+npm install
 ```
 
-*This command will pull the necessary images from Docker Hub or build them if locally configured, and start the services in the background.*
-
-### 4. Access AIVA
-
-Once the containers are running (give it a minute or two for the database to initialize):
-
-- **Frontend (Application)**: Open [http://localhost:3000](http://localhost:3000)
-- **Backend (API)**: Running at [http://localhost:5000](http://localhost:5000)
-
-## Stopping AIVA
-
-To stop the application and remove the containers:
-
-```bash
-docker-compose down
+Create `server/.env` with your configuration (see [Configuration](./configuration.md)):
+```env
+PORT=5000
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/aiva
+JWT_SECRET=your-secret-key
+ENCRYPTION_KEY=your-64-char-hex-encryption-key
+GEMINI_API_KEY=your-gemini-api-key
+CLIENT_URL=http://localhost:3000
 ```
+
+Generate an encryption key:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Start the server:
+```bash
+npm run dev
+```
+Server runs on `http://localhost:5000`.
+
+### 3. Set Up the Frontend
+```bash
+cd ../client
+npm install
+npm run dev
+```
+Client runs on `http://localhost:3000` with automatic API proxy to port 5000.
+
+### 4. Open the App
+Navigate to **http://localhost:3000** in your browser. Create an account and start using AIVA.
+
+---
+
+## Quick Start (Docker)
+
+### 1. Clone & Configure
+```bash
+git clone https://github.com/your-org/aiva.git
+cd aiva
+```
+
+Copy and edit the environment file:
+```bash
+cp docker-hub/hub.env.example .env
+# Edit .env with your values
+```
+
+### 2. Start with Docker Compose
+```bash
+docker-compose up --build
+```
+
+Or use the Docker Hub images:
+```bash
+cd docker-hub
+docker-compose up
+```
+
+### 3. Access the App
+Navigate to **http://localhost:3000**.
+
+---
+
+## Optional Setup
+
+### Google Integrations
+To enable Google Calendar, Tasks, Drive, Gmail, and Meet:
+1. Create a project in [Google Cloud Console](https://console.cloud.google.com)
+2. Enable required APIs (Calendar, Tasks, Drive, Gmail)
+3. Create OAuth 2.0 credentials
+4. Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to `.env`
+5. See [Gemini API Setup](./GEMINI_API_SETUP.md) for AI-specific setup
+
+### Email Verification
+To enable email verification and password reset:
+1. Create a Gmail App Password (Settings → Security → App Passwords)
+2. Add `GMAIL_USER` and `GMAIL_PASS` to `.env`
+
+### PWA / Offline Mode
+AIVA is a Progressive Web App out of the box:
+- Installable from the browser's address bar
+- Service worker caches assets for offline access
+- Background sync queues writes when offline
+
+---
+
+## Verify Installation
+
+After starting both server and client:
+
+| Check | Expected |
+|-------|----------|
+| `http://localhost:5000/api/health` | `{ "status": "ok" }` or server response |
+| `http://localhost:3000` | AIVA landing page / login screen |
+| Create account | Registration completes, redirects to dashboard |
+| Create a task | Task persists after page refresh |
+| Open AI chat | Gemini responds (requires valid `GEMINI_API_KEY`) |
+
+---
+
+## Project Launcher (Windows)
+
+For Windows users, AIVA includes a desktop launcher:
+```
+launcher/
+├── manager.js          # Process manager
+├── AivaControl.vbs     # VBS script to start AIVA
+├── aiva-pids.json      # Process tracking
+└── docker-compose.yml  # Docker launcher config
+```
+
+Double-click `AivaControl.vbs` to start both server and client.
+
+---
 
 ## Next Steps
 
-- Learn about the [Architecture](./architecture.md)
-- Customize your [Configuration](./configuration.md)
-- [Contribute](./development.md) to the code
+- [Architecture](./architecture.md) — Understand how AIVA is built
+- [Development Guide](./development.md) — Set up for contributing
+- [API Endpoints](./API_ENDPOINTS.md) — Full API reference
+- [Configuration](./configuration.md) — All environment variables
+- [Gemini API Setup](./GEMINI_API_SETUP.md) — Configure AI features

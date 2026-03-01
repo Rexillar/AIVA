@@ -39,7 +39,6 @@ import asyncHandler from 'express-async-handler';
 import Task from '../models/task.js';
 import { Workspace } from '../models/workspace.js';
 import { createTaskAssignmentNotifications } from '../services/notificationService.js';
-import GamificationService from '../services/gamificationService.js';
 import EncryptedSearchService from '../services/encryptedSearchService.js';
 import { decryptDocument } from '../utils/encryption.js';
 import { google } from 'googleapis';
@@ -317,7 +316,14 @@ const createTask = asyncHandler(async (req, res) => {
           const account = activeAccounts[0];
 
           // Create task in Google Tasks and get the Google task data
-          const googleTaskData = await createTaskInGoogle(task, account, integration);
+          // IMPORTANT: pass the original plain-text values from req.body, NOT task.title
+          // because Task.create() pre-save hook encrypts task.title in-memory before we get here.
+          const plainTaskProxy = {
+            ...task.toObject(),
+            title: title.trim(),               // original plain text from req.body
+            description: description?.trim() ?? '', // original plain text from req.body
+          };
+          const googleTaskData = await createTaskInGoogle(plainTaskProxy, account, integration);
 
           // Create external task record to link AIVA task with Google task
           if (googleTaskData) {
@@ -397,7 +403,8 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   // Get tasks for the workspace
   const tasks = await Task.find({
     workspace: workspaceId,
-    isTrashed: false
+    isTrash: false,
+    isDeleted: false
   });
 
   // Calculate total subtasks
@@ -512,13 +519,13 @@ const getTasks = asyncHandler(async (req, res) => {
       throw error;
     }
 
-    // Get native tasks
+    // Get native tasks (exclude tasks that have a Google ExternalTask mirror — those appear in the Google section)
     const tasks = await Task.find({
       workspace: workspaceId,
       isGoogleSynced: { $ne: true },
       ...(req.query.filter === 'trash'
-        ? { $or: [{ isArchived: true }, { isDeleted: true }] }
-        : { isDeleted: false, isArchived: false })
+        ? { isTrash: true, isDeleted: false }
+        : { isTrash: false, isDeleted: false })
     })
       .populate('creator', 'name email avatar')
       .populate('assignees', 'name email avatar')
@@ -559,12 +566,14 @@ const getTasks = asyncHandler(async (req, res) => {
 
           const externalTasks = await ExternalTask.find(externalTaskQuery);
 
-          // Map external tasks to include Google account info
+          // Map external tasks to include Google account info and isGoogleTask flag
+          // TaskCard checks `isGoogleTask` to show the Google badge and route actions correctly
           googleTasks = externalTasks.map(task => {
             const account = activeAccounts.find(acc => acc.accountId === task.googleAccountId);
             return {
               ...task.toObject(),
               source: 'google-tasks',
+              isGoogleTask: true,   // ← required by TaskCard for badge + action routing
               googleAccount: account ? {
                 accountId: account.accountId,
                 email: account.googleEmail,
@@ -589,9 +598,9 @@ const getTasks = asyncHandler(async (req, res) => {
         in_progress: tasks.filter(t => t.stage === 'in_progress').length,
         review: tasks.filter(t => t.stage === 'review').length,
         completed: tasks.filter(t => t.stage === 'completed').length,
-        archived: tasks.filter(t => t.isArchived === true).length,
+        trashed: tasks.filter(t => t.isTrash === true).length,
         deleted: tasks.filter(t => t.isDeleted === true).length,
-        trashCount: tasks.filter(t => t.isArchived === true || t.isDeleted === true).length
+        trashCount: tasks.filter(t => t.isTrash === true).length
       };
     }
 
@@ -625,6 +634,22 @@ const getTasks = asyncHandler(async (req, res) => {
 // @route   GET /api/tasks/:id
 // @access  Private
 const getTask = asyncHandler(async (req, res) => {
+  // If middleware identified this as a Google ExternalTask, return it directly
+  if (req.isExternalTask && req.externalTask) {
+    const ext = req.externalTask.toObject ? req.externalTask.toObject() : req.externalTask;
+    return res.json({
+      success: true,
+      data: {
+        ...ext,
+        isGoogleTask: true,
+        source: ext.source || 'google-tasks',
+        // Normalise fields that TaskDetails.jsx expects
+        stage: ext.status === 'completed' ? 'completed' : 'todo',
+        subtasks: [],
+      }
+    });
+  }
+
   const task = await Task.findById(req.params.id)
     .populate('creator', 'name email avatar')
     .populate('assignees', 'name email avatar')
@@ -655,8 +680,30 @@ const deleteTask = asyncHandler(async (req, res) => {
     });
   }
 
+  // If middleware identified this as a Google ExternalTask, delete from ExternalTask collection
+  if (req.isExternalTask && req.externalTask) {
+    const ExternalTask = (await import('../models/externalTask.js')).default;
+    await ExternalTask.findByIdAndDelete(id);
+    return res.status(200).json({
+      success: true,
+      message: 'Google task deleted permanently'
+    });
+  }
+
   const task = await Task.findById(id);
   if (!task) {
+    // Last-resort fallback: check ExternalTask collection
+    try {
+      const ExternalTask = (await import('../models/externalTask.js')).default;
+      const externalTask = await ExternalTask.findById(id);
+      if (externalTask) {
+        await ExternalTask.findByIdAndDelete(id);
+        return res.status(200).json({
+          success: true,
+          message: 'Google task deleted permanently'
+        });
+      }
+    } catch (_) { }
     return res.status(404).json({
       success: false,
       message: 'Task not found'
@@ -720,6 +767,21 @@ const moveToTrash = asyncHandler(async (req, res) => {
   }
 
   try {
+    // Check if this is a Google ExternalTask (no Task record in DB)
+    if (req.isExternalTask && req.externalTask) {
+      const ExternalTask = (await import('../models/externalTask.js')).default;
+      const updated = await ExternalTask.findByIdAndUpdate(
+        id,
+        { $set: { isTrash: true, isDeleted: true, deletedAt: new Date() } },
+        { new: true }
+      );
+      return res.json({
+        success: true,
+        message: 'Google task moved to trash successfully',
+        data: updated
+      });
+    }
+
     // Find the task
     const task = await Task.findOne({
       _id: id,
@@ -727,6 +789,23 @@ const moveToTrash = asyncHandler(async (req, res) => {
     });
 
     if (!task) {
+      // Fallback: check ExternalTask collection
+      try {
+        const ExternalTask = (await import('../models/externalTask.js')).default;
+        const externalTask = await ExternalTask.findById(id);
+        if (externalTask) {
+          const updated = await ExternalTask.findByIdAndUpdate(
+            id,
+            { $set: { isTrash: true, isDeleted: true, deletedAt: new Date() } },
+            { new: true }
+          );
+          return res.json({
+            success: true,
+            message: 'Google task moved to trash successfully',
+            data: updated
+          });
+        }
+      } catch (_) { }
       return res.status(404).json({
         success: false,
         message: 'Task not found'
@@ -767,10 +846,9 @@ const moveToTrash = asyncHandler(async (req, res) => {
       id,
       {
         $set: {
-          isArchived: true,
-          isDeleted: true,
-          archivedAt: new Date(),
-          archivedBy: req.user._id
+          isTrash: true,
+          trashedAt: new Date(),
+          trashedBy: req.user._id
         }
       },
       { new: true }
@@ -827,7 +905,7 @@ const postActivity = asyncHandler(async (req, res) => {
 });
 
 // @desc    Restore a task from trash
-// @route   POST /api/tasks/:id/restore
+// @route   PUT /api/tasks/:id/restore
 // @access  Private
 const restoreTask = asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -840,15 +918,47 @@ const restoreTask = asyncHandler(async (req, res) => {
     });
   }
 
+  // If middleware identified this as a Google ExternalTask
+  if (req.isExternalTask && req.externalTask) {
+    const ExternalTask = (await import('../models/externalTask.js')).default;
+    const restored = await ExternalTask.findByIdAndUpdate(
+      id,
+      { $set: { isTrash: false, isDeleted: false, deletedAt: null } },
+      { new: true }
+    );
+    return res.status(200).json({
+      success: true,
+      message: 'Google task restored successfully',
+      data: restored
+    });
+  }
+
   const task = await Task.findById(id);
   if (!task) {
+    // Fallback: check ExternalTask collection
+    try {
+      const ExternalTask = (await import('../models/externalTask.js')).default;
+      const externalTask = await ExternalTask.findById(id);
+      if (externalTask) {
+        const restored = await ExternalTask.findByIdAndUpdate(
+          id,
+          { $set: { isTrash: false, isDeleted: false, deletedAt: null } },
+          { new: true }
+        );
+        return res.status(200).json({
+          success: true,
+          message: 'Google task restored successfully',
+          data: restored
+        });
+      }
+    } catch (_) { }
     return res.status(404).json({
       success: false,
       message: 'Task not found'
     });
   }
 
-  if (!task.isArchived && !task.isDeleted) {
+  if (!task.isTrash && !task.isDeleted) {
     return res.status(400).json({
       success: false,
       message: 'Task is not in trash'
@@ -856,7 +966,7 @@ const restoreTask = asyncHandler(async (req, res) => {
   }
 
   // Restore the task
-  task.isArchived = false;
+  task.isTrash = false;
   task.isDeleted = false;
   task.trashedAt = null;
   task.trashedBy = null;
@@ -931,7 +1041,7 @@ const deleteTaskAttachment = asyncHandler(async (req, res) => {
 // @route   GET /api/tasks/workspace/:workspaceId
 // @access  Private
 const getWorkspaceTasks = asyncHandler(async (req, res) => {
-  const { workspaceId, filter, includeArchived, includeDeleted } = req.query;
+  const { workspaceId, filter, includeDeleted } = req.query;
 
   // Validate workspace ID
   const workspace = await Workspace.findById(workspaceId);
@@ -957,14 +1067,10 @@ const getWorkspaceTasks = asyncHandler(async (req, res) => {
   };
 
   if (filter === 'trash') {
-    // For trash, show tasks that are either archived or deleted
-    filterCondition.$or = [
-      { isArchived: true },
-      { isDeleted: true }
-    ];
+    filterCondition.isTrash = true;
+    filterCondition.isDeleted = false;
   } else {
-    // For active tasks, exclude archived and deleted
-    filterCondition.isArchived = false;
+    filterCondition.isTrash = false;
     filterCondition.isDeleted = false;
   }
 
@@ -989,7 +1095,7 @@ const getWorkspaceTasks = asyncHandler(async (req, res) => {
       tasks.reduce((sum, task) => sum + (task.subtasks?.filter(st => st.status === 'paused').length || 0), 0),
     completed: tasks.filter(task => task.stage === 'completed').length +
       tasks.reduce((sum, task) => sum + (task.subtasks?.filter(st => st.completed || st.status === 'completed').length || 0), 0),
-    archived: tasks.filter(task => task.isArchived === true).length,
+    trashed: tasks.filter(task => task.isTrash === true).length,
     deleted: tasks.filter(task => task.isDeleted === true).length,
     overdue: tasks.filter(task =>
       task.dueDate &&
@@ -1007,7 +1113,7 @@ const getWorkspaceTasks = asyncHandler(async (req, res) => {
       : 0,
     activeTasksCount: tasks.filter(task => task.stage !== 'completed').length +
       tasks.reduce((sum, task) => sum + (task.subtasks?.filter(st => !st.completed && st.status !== 'completed').length || 0), 0),
-    trashCount: tasks.filter(task => task.isArchived === true || task.isDeleted === true).length
+    trashCount: tasks.filter(task => task.isTrash === true).length
   };
 
   res.json({
@@ -1123,30 +1229,9 @@ const updateTask = asyncHandler(async (req, res) => {
     .populate('assignees', 'name email avatar')
     .populate('workspace', 'name type');
 
-  // Award XP if task was just completed
-  let rewards = null;
-  if (!wasCompleted && willBeCompleted) {
-    // Determine difficulty based on priority or subtasks count
-    let difficulty = 'medium';
-    if (updatedTask.priority === 'high' || (updatedTask.subtasks && updatedTask.subtasks.length > 3)) {
-      difficulty = 'hard';
-    } else if (updatedTask.priority === 'low' || (updatedTask.subtasks && updatedTask.subtasks.length === 0)) {
-      difficulty = 'easy';
-    }
-
-    rewards = await GamificationService.awardTaskCompletionXP(req.user._id, difficulty);
-
-    // Check for new achievements
-    const newAchievements = await GamificationService.checkAchievements(req.user._id);
-    if (newAchievements.length > 0) {
-      rewards.newAchievements = newAchievements;
-    }
-  }
-
   res.json({
     success: true,
-    data: updatedTask,
-    rewards
+    data: updatedTask
   });
 });
 
@@ -1260,16 +1345,7 @@ const completeTask = asyncHandler(async (req, res) => {
   task.completedAt = new Date();
   await task.save();
 
-  // Award XP for task completion
-  try {
-    await GamificationService.awardXP(
-      req.user._id,
-      'task_completed',
-      { taskId: task._id }
-    );
-  } catch (error) {
-    console.error('Gamification error:', error);
-  }
+
 
   res.status(200).json({
     success: true,
@@ -1425,16 +1501,7 @@ const completeTasksByName = asyncHandler(async (req, res) => {
     await task.save();
     completedTasks.push(task);
 
-    // Award XP
-    try {
-      await GamificationService.awardXP(
-        req.user._id,
-        'task_completed',
-        { taskId: task._id }
-      );
-    } catch (error) {
-      console.error('Gamification error:', error);
-    }
+
   }
 
   res.status(200).json({
@@ -1475,16 +1542,7 @@ const completeAllTasksDueToday = asyncHandler(async (req, res) => {
     task.completedAt = new Date();
     await task.save();
 
-    // Award XP
-    try {
-      await GamificationService.awardXP(
-        req.user._id,
-        'task_completed',
-        { taskId: task._id }
-      );
-    } catch (error) {
-      console.error('Gamification error:', error);
-    }
+
   }
 
   res.status(200).json({
@@ -1520,16 +1578,7 @@ const completeAllOverdueTasks = asyncHandler(async (req, res) => {
     task.completedAt = new Date();
     await task.save();
 
-    // Award XP
-    try {
-      await GamificationService.awardXP(
-        req.user._id,
-        'task_completed',
-        { taskId: task._id }
-      );
-    } catch (error) {
-      console.error('Gamification error:', error);
-    }
+
   }
 
   res.status(200).json({
@@ -1869,16 +1918,7 @@ const completeAllTasks = asyncHandler(async (req, res) => {
     task.completedAt = new Date();
     await task.save();
 
-    // Award XP
-    try {
-      await GamificationService.awardXP(
-        req.user._id,
-        'task_completed',
-        { taskId: task._id }
-      );
-    } catch (error) {
-      console.error('Gamification error:', error);
-    }
+
   }
 
   res.status(200).json({
@@ -1889,10 +1929,10 @@ const completeAllTasks = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc    Archive all completed tasks
-// @route   POST /api/tasks/batch/archive-completed
+// @desc    Trash all completed tasks
+// @route   POST /api/tasks/batch/trash-completed
 // @access  Private
-const archiveCompletedTasks = asyncHandler(async (req, res) => {
+const trashCompletedTasks = asyncHandler(async (req, res) => {
   const { workspaceId } = req.body;
 
   if (!workspaceId) {
@@ -1904,24 +1944,65 @@ const archiveCompletedTasks = asyncHandler(async (req, res) => {
     {
       workspace: workspaceId,
       stage: 'completed',
-      isArchived: { $ne: true }
+      isTrash: { $ne: true }
     },
     {
-      $set: { isArchived: true, archivedAt: new Date() }
+      $set: {
+        isTrash: true,
+        trashedAt: new Date(),
+        trashedBy: req.user._id
+      }
     }
   );
 
   res.status(200).json({
     success: true,
-    message: `Archived ${result.modifiedCount} completed task(s)`,
+    message: `Moved ${result.modifiedCount} completed task(s) to trash`,
     count: result.modifiedCount
   });
 });
 
-// @desc    Restore all archived tasks
-// @route   POST /api/tasks/batch/restore-archived
+// @desc    Move multiple tasks to trash
+// @route   POST /api/tasks/batch/trash
 // @access  Private
-const restoreArchivedTasks = asyncHandler(async (req, res) => {
+const bulkMoveToTrash = asyncHandler(async (req, res) => {
+  const { taskIds, workspaceId } = req.body;
+
+  if (!taskIds || !Array.isArray(taskIds) || taskIds.length === 0) {
+    res.status(400);
+    throw new Error('Task IDs array is required');
+  }
+
+  if (!workspaceId) {
+    res.status(400);
+    throw new Error('Workspace ID is required');
+  }
+
+  const result = await Task.updateMany(
+    {
+      _id: { $in: taskIds },
+      workspace: workspaceId
+    },
+    {
+      $set: {
+        isTrash: true,
+        trashedAt: new Date(),
+        trashedBy: req.user._id
+      }
+    }
+  );
+
+  res.status(200).json({
+    success: true,
+    message: `Moved ${result.modifiedCount} task(s) to trash`,
+    count: result.modifiedCount
+  });
+});
+
+// @desc    Restore all trashed tasks
+// @route   POST /api/tasks/batch/restore-trashed
+// @access  Private
+const restoreAllTrashedTasks = asyncHandler(async (req, res) => {
   const { workspaceId } = req.body;
 
   if (!workspaceId) {
@@ -1932,17 +2013,18 @@ const restoreArchivedTasks = asyncHandler(async (req, res) => {
   const result = await Task.updateMany(
     {
       workspace: workspaceId,
-      isArchived: true
+      isTrash: true,
+      isDeleted: { $ne: true }
     },
     {
-      $set: { isArchived: false },
-      $unset: { archivedAt: 1 }
+      $set: { isTrash: false },
+      $unset: { trashedAt: 1, trashedBy: 1 }
     }
   );
 
   res.status(200).json({
     success: true,
-    message: `Restored ${result.modifiedCount} archived task(s)`,
+    message: `Restored ${result.modifiedCount} trashed task(s)`,
     count: result.modifiedCount
   });
 });
@@ -1989,6 +2071,7 @@ export {
   renameTask,
   updateTaskDueDate,
   completeAllTasks,
-  archiveCompletedTasks,
-  restoreArchivedTasks
+  trashCompletedTasks,
+  bulkMoveToTrash,
+  restoreAllTrashedTasks
 };

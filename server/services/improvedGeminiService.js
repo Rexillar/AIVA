@@ -38,6 +38,7 @@
 import { classifyIntent, shouldUseAI, INTENT_TYPES } from './intentClassifier.js';
 import { getContext, updateContext, getCompressedContext, PRIORITY_LEVELS } from './contextManager.js';
 import { buildPrompt, buildCompressedPrompt, buildVoicePrompt } from '../utils/promptTemplates.js';
+import { FieldEncryption } from '../utils/encryption.js';
 import {
   getConversationState,
   saveConversationState,
@@ -195,7 +196,7 @@ const findWorkspaceByName = async (workspaceName, userId) => {
       name: { $regex: new RegExp(`^${workspaceName}$`, 'i') }
     }).select('_id name').lean();
 
-    return workspace;
+    return decryptWorkspace(workspace);
   } catch (error) {
     console.error('Workspace lookup error:', error);
     return null;
@@ -230,7 +231,8 @@ const extractWorkspaceMention = async (message, userId) => {
  */
 const getCurrentWorkspace = async (workspaceId) => {
   try {
-    return await Workspace.findById(workspaceId).select('_id name').lean();
+    const workspace = await Workspace.findById(workspaceId).select('_id name').lean();
+    return decryptWorkspace(workspace);
   } catch (error) {
     return null;
   }
@@ -294,6 +296,29 @@ const detectWorkspaceAmbiguity = async (message, userId, currentWorkspaceId, int
 };
 
 /**
+ * Decrypt workspace data
+ * Decrypts encrypted fields (name, description) from a workspace object
+ */
+const decryptWorkspace = (workspace) => {
+  if (!workspace) return null;
+  
+  return {
+    ...workspace,
+    name: FieldEncryption.decrypt(workspace.name || ''),
+    description: workspace.description ? FieldEncryption.decrypt(workspace.description) : null
+  };
+};
+
+/**
+ * Decrypt array of workspaces
+ */
+const decryptWorkspaces = (workspaces) => {
+  return Array.isArray(workspaces) 
+    ? workspaces.map(w => decryptWorkspace(w))
+    : [];
+};
+
+/**
  * Direct database query handler (no AI needed)
  */
 const handleDirectQuery = async (classification, userId, workspaceId, userMessage) => {
@@ -303,13 +328,14 @@ const handleDirectQuery = async (classification, userId, workspaceId, userMessag
   let targetWorkspaceId = workspaceId;
   let targetWorkspaceName = null;
 
-  if (data?.workspace) {
-    const foundWorkspace = await findWorkspaceByName(data.workspace, userId);
+  if (data?.workspace || data?.workspaceName) {
+    const requestedWorkspace = data.workspace || data.workspaceName;
+    const foundWorkspace = await findWorkspaceByName(requestedWorkspace, userId);
     if (!foundWorkspace) {
       return {
         intent: 'error',
         action: null,
-        reply: `I couldn't find a workspace named "${data.workspace}". Please check the name and try again, or use "list workspaces" to see your available workspaces.`,
+        reply: `I couldn't find a workspace named "${requestedWorkspace}". Please check the name and try again, or use "list workspaces" to see your available workspaces.`,
         data: null
       };
     }
@@ -319,6 +345,55 @@ const handleDirectQuery = async (classification, userId, workspaceId, userMessag
 
   try {
     switch (type) {
+      case INTENT_TYPES.CREATE_TASK:
+      case INTENT_TYPES.CREATE_TASK_IN_WORKSPACE: {
+        const taskTitle = (data?.name || data?.taskName || '').trim();
+        if (!taskTitle) {
+          return {
+            intent: 'ask_clarification',
+            action: null,
+            reply: 'What should I name the task?',
+            data: null
+          };
+        }
+
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + 1);
+        dueDate.setHours(12, 0, 0, 0);
+
+        const task = await Task.create({
+          title: taskTitle,
+          creator: userId,
+          workspace: targetWorkspaceId,
+          assignees: [userId],
+          stage: 'todo',
+          priority: 'medium',
+          dueDate,
+          isDeleted: false,
+          isTrash: false
+        });
+
+        const googleSyncRequested = /\b(google|google\s*tasks|sync)\b/i.test(userMessage || '');
+
+        const workspaceText = targetWorkspaceName ? ` in "${targetWorkspaceName}"` : '';
+        const googleSyncText = googleSyncRequested
+          ? ' Google sync requested. Enable "Sync this task to Google Tasks" in the task form for full Google sync details.'
+          : '';
+
+        return {
+          intent: 'create_task',
+          action: null,
+          reply: `Created task "${taskTitle}"${workspaceText}.${googleSyncText}`,
+          data: {
+            ...task.toObject(),
+            googleSync: {
+              requested: googleSyncRequested,
+              synced: false
+            }
+          }
+        };
+      }
+
       case INTENT_TYPES.LIST_TASKS: {
         const query = {
           workspace: targetWorkspaceId,
@@ -374,7 +449,7 @@ const handleDirectQuery = async (classification, userId, workspaceId, userMessag
         const notes = await Note.find({
           workspace: targetWorkspaceId,
           $or: [{ creator: userId }, { 'sharedWith.user': userId }],
-          isTrashed: false
+          isTrash: false
         }).select('title tags updatedAt').sort({ updatedAt: -1 }).limit(50).lean();
 
         const workspaceText = targetWorkspaceName ? ` in "${targetWorkspaceName}"` : '';
@@ -388,14 +463,29 @@ const handleDirectQuery = async (classification, userId, workspaceId, userMessag
 
       case INTENT_TYPES.LIST_WORKSPACES: {
         const workspaces = await Workspace.find({
-          $or: [{ owner: userId }, { 'members.user': userId }]
+          isDeleted: false,
+          $or: [
+            { owner: userId },
+            { 'members.user': userId, 'members.isActive': true }
+          ]
         }).select('name description isActive').lean();
+
+        // Decrypt workspace names and descriptions
+        const decryptedWorkspaces = decryptWorkspaces(workspaces);
+
+        const workspaceNames = decryptedWorkspaces
+          .map(w => (w?.name || '').trim())
+          .filter(Boolean);
+
+        const minimalReply = workspaceNames.length > 0
+          ? `Workspaces (${workspaceNames.length}): ${workspaceNames.join(', ')}`
+          : 'No workspaces found.';
 
         return {
           intent: 'list_workspaces',
           action: null,
-          reply: `You have ${workspaces.length} workspaces.`,
-          data: workspaces
+          reply: minimalReply,
+          data: decryptedWorkspaces
         };
       }
 
@@ -476,6 +566,886 @@ const handleDirectQuery = async (classification, userId, workspaceId, userMessag
           action: null,
           reply: `Created ${visibility} workspace: ${workspaceName} 🏢`,
           data: workspace
+        };
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      //  DETERMINISTIC TASK CRUD — No AI, No Hallucination
+      //  Rule: If it modifies state → deterministic
+      // ═══════════════════════════════════════════════════════════════
+
+      case INTENT_TYPES.LIST_TODAY_TASKS: {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+
+        const tasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          isDeleted: false,
+          isTrash: false,
+          dueDate: { $gte: todayStart, $lte: todayEnd }
+        }).sort({ priority: -1 }).select('title stage priority dueDate').lean();
+
+        return {
+          intent: 'list_today_tasks',
+          action: null,
+          reply: `You have ${tasks.length} task(s) due today.`,
+          data: tasks
+        };
+      }
+
+      case INTENT_TYPES.LIST_OVERDUE_TASKS: {
+        const tasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          isDeleted: false,
+          isTrash: false,
+          stage: { $ne: 'completed' },
+          dueDate: { $lt: new Date() }
+        }).sort({ dueDate: 1 }).select('title stage priority dueDate').lean();
+
+        return {
+          intent: 'list_overdue_tasks',
+          action: null,
+          reply: tasks.length > 0
+            ? `${tasks.length} overdue task(s) need attention.`
+            : 'No overdue tasks — you\'re on track.',
+          data: tasks
+        };
+      }
+
+      case INTENT_TYPES.LIST_COMPLETED_TASKS: {
+        const tasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          stage: 'completed',
+          isDeleted: false
+        }).sort({ completedAt: -1 }).limit(50).select('title priority completedAt').lean();
+
+        return {
+          intent: 'list_completed_tasks',
+          action: null,
+          reply: `${tasks.length} completed task(s).`,
+          data: tasks
+        };
+      }
+
+      case INTENT_TYPES.LIST_SUBTASKS: {
+        const taskName = (data?.taskName || '').trim().toLowerCase();
+        if (!taskName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Which task do you want to see subtasks for?', data: null };
+        }
+
+        const allTasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          isDeleted: false,
+          isTrash: false
+        }).select('title subtasks').lean();
+
+        const matchedTask = allTasks.find(t => {
+          const decrypted = FieldEncryption.decrypt(t.title || '').toLowerCase();
+          return decrypted.includes(taskName) || taskName.includes(decrypted);
+        });
+
+        if (!matchedTask) {
+          return { intent: 'error', action: null, reply: `No task matching "${taskName}" found.`, data: null };
+        }
+
+        const subtasks = (matchedTask.subtasks || []).map(st => ({
+          title: st.title,
+          status: st.status || (st.completed ? 'completed' : 'not_started'),
+          priority: st.priority
+        }));
+
+        return {
+          intent: 'list_subtasks',
+          action: null,
+          reply: `"${FieldEncryption.decrypt(matchedTask.title)}" has ${subtasks.length} subtask(s).`,
+          data: subtasks
+        };
+      }
+
+      case INTENT_TYPES.COMPLETE_TASK: {
+        const taskName = (data?.name || '').trim().toLowerCase();
+        if (!taskName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Which task should I mark as complete?', data: null };
+        }
+
+        const allTasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          isDeleted: false,
+          isTrash: false,
+          stage: { $ne: 'completed' }
+        }).select('title stage').lean();
+
+        const matched = allTasks.find(t => {
+          const decrypted = FieldEncryption.decrypt(t.title || '').toLowerCase();
+          return decrypted.includes(taskName) || taskName.includes(decrypted);
+        });
+
+        if (!matched) {
+          return { intent: 'error', action: null, reply: `No active task matching "${taskName}" found.`, data: null };
+        }
+
+        await Task.findByIdAndUpdate(matched._id, {
+          stage: 'completed',
+          completedAt: new Date(),
+          completedBy: userId
+        });
+
+        const decryptedTitle = FieldEncryption.decrypt(matched.title || '');
+        return {
+          intent: 'complete_task',
+          action: null,
+          reply: `Completed "${decryptedTitle}".`,
+          data: { taskId: matched._id, title: decryptedTitle }
+        };
+      }
+
+      case INTENT_TYPES.COMPLETE_SUBTASK: {
+        const subtaskName = (data?.name || '').trim().toLowerCase();
+        if (!subtaskName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Which subtask should I mark as complete?', data: null };
+        }
+
+        const tasksWithSubtasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          isDeleted: false,
+          isTrash: false,
+          'subtasks.0': { $exists: true }
+        }).select('title subtasks');
+
+        let matchedTask = null;
+        let matchedSubtask = null;
+
+        for (const task of tasksWithSubtasks) {
+          const st = task.subtasks.find(s =>
+            s.title && s.title.toLowerCase().includes(subtaskName)
+          );
+          if (st) {
+            matchedTask = task;
+            matchedSubtask = st;
+            break;
+          }
+        }
+
+        if (!matchedSubtask) {
+          return { intent: 'error', action: null, reply: `No subtask matching "${subtaskName}" found.`, data: null };
+        }
+
+        matchedSubtask.completed = true;
+        matchedSubtask.completedAt = new Date();
+        matchedSubtask.completedBy = userId;
+        matchedSubtask.status = 'completed';
+        await matchedTask.save();
+
+        return {
+          intent: 'complete_subtask',
+          action: null,
+          reply: `Completed subtask "${matchedSubtask.title}".`,
+          data: { taskId: matchedTask._id, subtaskId: matchedSubtask._id }
+        };
+      }
+
+      case INTENT_TYPES.COMPLETE_HABIT: {
+        const habitName = (data?.name || '').trim().toLowerCase();
+        if (!habitName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Which habit should I mark as complete?', data: null };
+        }
+
+        const allHabits = await Habit.find({
+          user: userId,
+          workspace: targetWorkspaceId,
+          isActive: true,
+          isPaused: false
+        }).select('title completions currentStreak longestStreak totalCompletions').lean();
+
+        const matched = allHabits.find(h => {
+          const decrypted = FieldEncryption.decrypt(h.title || '').toLowerCase();
+          return decrypted.includes(habitName) || habitName.includes(decrypted);
+        });
+
+        if (!matched) {
+          return { intent: 'error', action: null, reply: `No active habit matching "${habitName}" found.`, data: null };
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const alreadyDone = (matched.completions || []).some(c => {
+          const d = new Date(c.date);
+          d.setHours(0, 0, 0, 0);
+          return d.getTime() === today.getTime() && c.completed;
+        });
+
+        if (alreadyDone) {
+          return { intent: 'habit_already_done', action: null, reply: `"${FieldEncryption.decrypt(matched.title)}" is already completed for today.`, data: null };
+        }
+
+        await Habit.findByIdAndUpdate(matched._id, {
+          $push: { completions: { date: new Date(), completed: true, completedAt: new Date() } },
+          $inc: { currentStreak: 1, totalCompletions: 1 }
+        });
+
+        const newStreak = (matched.currentStreak || 0) + 1;
+        const decryptedTitle = FieldEncryption.decrypt(matched.title || '');
+        return {
+          intent: 'complete_habit',
+          action: null,
+          reply: `Completed "${decryptedTitle}" — ${newStreak} day streak!`,
+          data: { habitId: matched._id, title: decryptedTitle, streak: newStreak }
+        };
+      }
+
+      case INTENT_TYPES.DELETE_TASK: {
+        const taskName = (data?.name || '').trim().toLowerCase();
+        if (!taskName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Which task should I delete?', data: null };
+        }
+
+        const allTasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          isDeleted: false,
+          isTrash: false
+        }).select('title stage').lean();
+
+        const matched = allTasks.find(t => {
+          const decrypted = FieldEncryption.decrypt(t.title || '').toLowerCase();
+          return decrypted.includes(taskName) || taskName.includes(decrypted);
+        });
+
+        if (!matched) {
+          return { intent: 'error', action: null, reply: `No task matching "${taskName}" found.`, data: null };
+        }
+
+        await Task.findByIdAndUpdate(matched._id, { isTrash: true, trashedAt: new Date(), trashedBy: userId });
+
+        const decryptedTitle = FieldEncryption.decrypt(matched.title || '');
+        return {
+          intent: 'delete_task',
+          action: null,
+          reply: `Moved "${decryptedTitle}" to trash.`,
+          data: { taskId: matched._id, title: decryptedTitle }
+        };
+      }
+
+      case INTENT_TYPES.DELETE_HABIT: {
+        const habitName = (data?.name || '').trim().toLowerCase();
+        if (!habitName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Which habit should I delete?', data: null };
+        }
+
+        const allHabits = await Habit.find({
+          user: userId,
+          workspace: targetWorkspaceId,
+          isActive: true
+        }).select('title').lean();
+
+        const matched = allHabits.find(h => {
+          const decrypted = FieldEncryption.decrypt(h.title || '').toLowerCase();
+          return decrypted.includes(habitName) || habitName.includes(decrypted);
+        });
+
+        if (!matched) {
+          return { intent: 'error', action: null, reply: `No habit matching "${habitName}" found.`, data: null };
+        }
+
+        await Habit.findByIdAndUpdate(matched._id, { isTrash: true, isActive: false });
+
+        return {
+          intent: 'delete_habit',
+          action: null,
+          reply: `Deleted habit "${FieldEncryption.decrypt(matched.title)}".`,
+          data: { habitId: matched._id }
+        };
+      }
+
+      case INTENT_TYPES.DELETE_NOTE: {
+        const noteName = (data?.name || '').trim().toLowerCase();
+        if (!noteName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Which note should I delete?', data: null };
+        }
+
+        const allNotes = await Note.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { 'sharedWith.user': userId }],
+          isTrash: false
+        }).select('title').lean();
+
+        const matched = allNotes.find(n => {
+          const decrypted = FieldEncryption.decrypt(n.title || '').toLowerCase();
+          return decrypted.includes(noteName) || noteName.includes(decrypted);
+        });
+
+        if (!matched) {
+          return { intent: 'error', action: null, reply: `No note matching "${noteName}" found.`, data: null };
+        }
+
+        await Note.findByIdAndUpdate(matched._id, { isTrash: true });
+
+        return {
+          intent: 'delete_note',
+          action: null,
+          reply: `Deleted note "${FieldEncryption.decrypt(matched.title)}".`,
+          data: { noteId: matched._id }
+        };
+      }
+
+      case INTENT_TYPES.REOPEN_TASK: {
+        const taskName = (data?.name || '').trim().toLowerCase();
+        if (!taskName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Which task should I reopen?', data: null };
+        }
+
+        const allTasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          isDeleted: false,
+          isTrash: false,
+          stage: 'completed'
+        }).select('title').lean();
+
+        const matched = allTasks.find(t => {
+          const decrypted = FieldEncryption.decrypt(t.title || '').toLowerCase();
+          return decrypted.includes(taskName) || taskName.includes(decrypted);
+        });
+
+        if (!matched) {
+          return { intent: 'error', action: null, reply: `No completed task matching "${taskName}" found.`, data: null };
+        }
+
+        await Task.findByIdAndUpdate(matched._id, { stage: 'todo', completedAt: null, completedBy: null });
+
+        return {
+          intent: 'reopen_task',
+          action: null,
+          reply: `Reopened "${FieldEncryption.decrypt(matched.title)}" — moved back to To Do.`,
+          data: { taskId: matched._id }
+        };
+      }
+
+      case INTENT_TYPES.RENAME_TASK: {
+        const oldName = (data?.oldName || '').trim().toLowerCase();
+        const newName = (data?.newName || '').trim();
+        if (!oldName || !newName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Please specify the task to rename and the new name. Example: "rename task Meeting to Stand-up"', data: null };
+        }
+
+        const allTasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          isDeleted: false,
+          isTrash: false
+        }).select('title').lean();
+
+        const matched = allTasks.find(t => {
+          const decrypted = FieldEncryption.decrypt(t.title || '').toLowerCase();
+          return decrypted.includes(oldName) || oldName.includes(decrypted);
+        });
+
+        if (!matched) {
+          return { intent: 'error', action: null, reply: `No task matching "${oldName}" found.`, data: null };
+        }
+
+        await Task.findByIdAndUpdate(matched._id, { title: newName });
+
+        return {
+          intent: 'rename_task',
+          action: null,
+          reply: `Renamed task to "${newName}".`,
+          data: { taskId: matched._id, newTitle: newName }
+        };
+      }
+
+      case INTENT_TYPES.UPDATE_TASK_DUE_DATE: {
+        const taskName = (data?.taskName || '').trim().toLowerCase();
+        const dateStr = (data?.newDueDate || '').trim().toLowerCase();
+        if (!taskName || !dateStr) {
+          return { intent: 'ask_clarification', action: null, reply: 'Please specify the task and new due date. Example: "change due date of Report to tomorrow"', data: null };
+        }
+
+        // Parse relative date
+        let newDate;
+        const now = new Date();
+        if (dateStr === 'today') { newDate = new Date(); }
+        else if (dateStr === 'tomorrow') { newDate = new Date(now.setDate(now.getDate() + 1)); }
+        else if (dateStr.startsWith('next ')) {
+          const dayTarget = dateStr.replace('next ', '');
+          const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+          const targetIdx = days.indexOf(dayTarget);
+          if (targetIdx >= 0) {
+            const current = new Date().getDay();
+            const daysUntil = (targetIdx - current + 7) % 7 || 7;
+            newDate = new Date();
+            newDate.setDate(newDate.getDate() + daysUntil);
+          } else { newDate = new Date(dateStr); }
+        } else { newDate = new Date(dateStr); }
+
+        if (isNaN(newDate?.getTime())) {
+          return { intent: 'error', action: null, reply: `I couldn't parse "${dateStr}" as a date. Try "tomorrow", "next monday", or "2026-03-15".`, data: null };
+        }
+        newDate.setHours(12, 0, 0, 0);
+
+        const allTasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          isDeleted: false,
+          isTrash: false
+        }).select('title').lean();
+
+        const matched = allTasks.find(t => {
+          const decrypted = FieldEncryption.decrypt(t.title || '').toLowerCase();
+          return decrypted.includes(taskName) || taskName.includes(decrypted);
+        });
+
+        if (!matched) {
+          return { intent: 'error', action: null, reply: `No task matching "${taskName}" found.`, data: null };
+        }
+
+        await Task.findByIdAndUpdate(matched._id, { dueDate: newDate });
+
+        return {
+          intent: 'update_task_due_date',
+          action: null,
+          reply: `Updated due date of "${FieldEncryption.decrypt(matched.title)}" to ${newDate.toLocaleDateString()}.`,
+          data: { taskId: matched._id, newDueDate: newDate }
+        };
+      }
+
+      case INTENT_TYPES.CREATE_HABIT: {
+        const habitTitle = (data?.name || '').trim();
+        if (!habitTitle) {
+          return { intent: 'ask_clarification', action: null, reply: 'What habit would you like to create?', data: null };
+        }
+
+        const habit = await Habit.create({
+          title: habitTitle,
+          user: userId,
+          workspace: targetWorkspaceId,
+          frequency: 'daily',
+          isActive: true,
+          visibility: 'private',
+          category: 'other'
+        });
+
+        const workspaceText = targetWorkspaceName ? ` in "${targetWorkspaceName}"` : '';
+        return {
+          intent: 'create_habit',
+          action: null,
+          reply: `Created habit "${habitTitle}"${workspaceText}.`,
+          data: habit
+        };
+      }
+
+      case INTENT_TYPES.CREATE_NOTE: {
+        const noteTitle = (data?.name || '').trim();
+        if (!noteTitle) {
+          return { intent: 'ask_clarification', action: null, reply: 'What should I name the note?', data: null };
+        }
+
+        const note = await Note.create({
+          title: noteTitle,
+          creator: userId,
+          workspace: targetWorkspaceId,
+          content: ''
+        });
+
+        const workspaceText = targetWorkspaceName ? ` in "${targetWorkspaceName}"` : '';
+        return {
+          intent: 'create_note',
+          action: null,
+          reply: `Created note "${noteTitle}"${workspaceText}.`,
+          data: note
+        };
+      }
+
+      case INTENT_TYPES.CREATE_SUBTASK: {
+        const subtaskTitle = (data?.subtaskName || '').trim();
+        const parentTaskName = (data?.taskName || '').trim().toLowerCase();
+        if (!subtaskTitle || !parentTaskName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Specify the subtask and parent task. Example: "add subtask Design to task Build UI"', data: null };
+        }
+
+        const allTasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          isDeleted: false,
+          isTrash: false
+        }).select('title subtasks');
+
+        const parentTask = allTasks.find(t => {
+          const decrypted = FieldEncryption.decrypt(t.title || '').toLowerCase();
+          return decrypted.includes(parentTaskName) || parentTaskName.includes(decrypted);
+        });
+
+        if (!parentTask) {
+          return { intent: 'error', action: null, reply: `No task matching "${parentTaskName}" found.`, data: null };
+        }
+
+        parentTask.subtasks.push({
+          title: subtaskTitle,
+          status: 'not_started',
+          completed: false,
+          createdBy: userId,
+          priority: 'medium'
+        });
+        await parentTask.save();
+
+        return {
+          intent: 'create_subtask',
+          action: null,
+          reply: `Added subtask "${subtaskTitle}" to "${FieldEncryption.decrypt(parentTask.title)}".`,
+          data: { taskId: parentTask._id, subtask: subtaskTitle }
+        };
+      }
+
+      case INTENT_TYPES.SEARCH_TASKS: {
+        const keyword = (data?.keyword || '').trim().toLowerCase();
+        if (!keyword) {
+          return { intent: 'ask_clarification', action: null, reply: 'What should I search for?', data: null };
+        }
+
+        const allTasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          isDeleted: false,
+          isTrash: false
+        }).select('title stage priority dueDate').lean();
+
+        const results = allTasks.filter(t => {
+          const decrypted = FieldEncryption.decrypt(t.title || '').toLowerCase();
+          return decrypted.includes(keyword);
+        }).map(t => ({
+          ...t,
+          title: FieldEncryption.decrypt(t.title || '')
+        }));
+
+        return {
+          intent: 'search_tasks',
+          action: null,
+          reply: results.length > 0
+            ? `Found ${results.length} task(s) matching "${keyword}".`
+            : `No tasks matching "${keyword}".`,
+          data: results
+        };
+      }
+
+      case INTENT_TYPES.SEARCH_NOTES: {
+        const keyword = (data?.keyword || '').trim().toLowerCase();
+        if (!keyword) {
+          return { intent: 'ask_clarification', action: null, reply: 'What should I search for?', data: null };
+        }
+
+        const allNotes = await Note.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { 'sharedWith.user': userId }],
+          isTrash: false
+        }).select('title tags updatedAt').lean();
+
+        const results = allNotes.filter(n => {
+          const decrypted = FieldEncryption.decrypt(n.title || '').toLowerCase();
+          return decrypted.includes(keyword);
+        }).map(n => ({
+          ...n,
+          title: FieldEncryption.decrypt(n.title || '')
+        }));
+
+        return {
+          intent: 'search_notes',
+          action: null,
+          reply: results.length > 0
+            ? `Found ${results.length} note(s) matching "${keyword}".`
+            : `No notes matching "${keyword}".`,
+          data: results
+        };
+      }
+
+      case INTENT_TYPES.MOVE_TASK_TO_WORKSPACE: {
+        const taskName = (data?.taskName || '').trim().toLowerCase();
+        const targetWs = (data?.targetWorkspace || '').trim();
+        if (!taskName || !targetWs) {
+          return { intent: 'ask_clarification', action: null, reply: 'Specify the task and target workspace. Example: "move task Report to workspace Marketing"', data: null };
+        }
+
+        const destWorkspace = await findWorkspaceByName(targetWs, userId);
+        if (!destWorkspace) {
+          return { intent: 'error', action: null, reply: `Workspace "${targetWs}" not found.`, data: null };
+        }
+
+        const allTasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          isDeleted: false,
+          isTrash: false
+        }).select('title').lean();
+
+        const matched = allTasks.find(t => {
+          const decrypted = FieldEncryption.decrypt(t.title || '').toLowerCase();
+          return decrypted.includes(taskName) || taskName.includes(decrypted);
+        });
+
+        if (!matched) {
+          return { intent: 'error', action: null, reply: `No task matching "${taskName}" found.`, data: null };
+        }
+
+        await Task.findByIdAndUpdate(matched._id, { workspace: destWorkspace._id });
+
+        return {
+          intent: 'move_task_to_workspace',
+          action: null,
+          reply: `Moved "${FieldEncryption.decrypt(matched.title)}" to workspace "${destWorkspace.name}".`,
+          data: { taskId: matched._id, newWorkspace: destWorkspace._id }
+        };
+      }
+
+      case INTENT_TYPES.DUPLICATE_TASK: {
+        const taskName = (data?.name || '').trim().toLowerCase();
+        if (!taskName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Which task should I duplicate?', data: null };
+        }
+
+        const allTasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          isDeleted: false,
+          isTrash: false
+        }).select('title description priority stage dueDate workspace assignees labels focusTag').lean();
+
+        const matched = allTasks.find(t => {
+          const decrypted = FieldEncryption.decrypt(t.title || '').toLowerCase();
+          return decrypted.includes(taskName) || taskName.includes(decrypted);
+        });
+
+        if (!matched) {
+          return { intent: 'error', action: null, reply: `No task matching "${taskName}" found.`, data: null };
+        }
+
+        const decryptedTitle = FieldEncryption.decrypt(matched.title || '');
+        const duplicate = await Task.create({
+          title: `${decryptedTitle} (copy)`,
+          description: matched.description,
+          priority: matched.priority,
+          stage: 'todo',
+          dueDate: matched.dueDate,
+          workspace: matched.workspace,
+          creator: userId,
+          assignees: matched.assignees,
+          labels: matched.labels,
+          focusTag: matched.focusTag
+        });
+
+        return {
+          intent: 'duplicate_task',
+          action: null,
+          reply: `Duplicated "${decryptedTitle}" as "${decryptedTitle} (copy)".`,
+          data: duplicate
+        };
+      }
+
+      case INTENT_TYPES.RESTORE_TASK_FROM_TRASH: {
+        const taskName = (data?.name || '').trim().toLowerCase();
+        if (!taskName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Which task should I restore?', data: null };
+        }
+
+        const trashedTasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          isTrash: true,
+          isDeleted: false
+        }).select('title').lean();
+
+        const matched = trashedTasks.find(t => {
+          const decrypted = FieldEncryption.decrypt(t.title || '').toLowerCase();
+          return decrypted.includes(taskName) || taskName.includes(decrypted);
+        });
+
+        if (!matched) {
+          return { intent: 'error', action: null, reply: `No trashed task matching "${taskName}" found.`, data: null };
+        }
+
+        await Task.findByIdAndUpdate(matched._id, { isTrash: false, trashedAt: null, trashedBy: null });
+
+        return {
+          intent: 'restore_task_from_trash',
+          action: null,
+          reply: `Restored "${FieldEncryption.decrypt(matched.title)}" from trash.`,
+          data: { taskId: matched._id }
+        };
+      }
+
+      case INTENT_TYPES.PAUSE_HABIT: {
+        const habitName = (data?.name || '').trim().toLowerCase();
+        if (!habitName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Which habit should I pause?', data: null };
+        }
+
+        const allHabits = await Habit.find({
+          user: userId,
+          workspace: targetWorkspaceId,
+          isActive: true,
+          isPaused: false
+        }).select('title').lean();
+
+        const matched = allHabits.find(h => {
+          const decrypted = FieldEncryption.decrypt(h.title || '').toLowerCase();
+          return decrypted.includes(habitName) || habitName.includes(decrypted);
+        });
+
+        if (!matched) {
+          return { intent: 'error', action: null, reply: `No active habit matching "${habitName}" found.`, data: null };
+        }
+
+        await Habit.findByIdAndUpdate(matched._id, { isPaused: true });
+
+        return {
+          intent: 'pause_habit',
+          action: null,
+          reply: `Paused habit "${FieldEncryption.decrypt(matched.title)}".`,
+          data: { habitId: matched._id }
+        };
+      }
+
+      case INTENT_TYPES.RESUME_HABIT: {
+        const habitName = (data?.name || '').trim().toLowerCase();
+        if (!habitName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Which habit should I resume?', data: null };
+        }
+
+        const allHabits = await Habit.find({
+          user: userId,
+          workspace: targetWorkspaceId,
+          isActive: true,
+          isPaused: true
+        }).select('title').lean();
+
+        const matched = allHabits.find(h => {
+          const decrypted = FieldEncryption.decrypt(h.title || '').toLowerCase();
+          return decrypted.includes(habitName) || habitName.includes(decrypted);
+        });
+
+        if (!matched) {
+          return { intent: 'error', action: null, reply: `No paused habit matching "${habitName}" found.`, data: null };
+        }
+
+        await Habit.findByIdAndUpdate(matched._id, { isPaused: false });
+
+        return {
+          intent: 'resume_habit',
+          action: null,
+          reply: `Resumed habit "${FieldEncryption.decrypt(matched.title)}".`,
+          data: { habitId: matched._id }
+        };
+      }
+
+      case INTENT_TYPES.TRASH_HABIT: {
+        // Same as delete_habit
+        const habitName = (data?.name || '').trim().toLowerCase();
+        if (!habitName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Which habit should I trash?', data: null };
+        }
+
+        const allHabits = await Habit.find({
+          user: userId,
+          workspace: targetWorkspaceId,
+          isActive: true
+        }).select('title').lean();
+
+        const matched = allHabits.find(h => {
+          const decrypted = FieldEncryption.decrypt(h.title || '').toLowerCase();
+          return decrypted.includes(habitName) || habitName.includes(decrypted);
+        });
+
+        if (!matched) {
+          return { intent: 'error', action: null, reply: `No habit matching "${habitName}" found.`, data: null };
+        }
+
+        await Habit.findByIdAndUpdate(matched._id, { isTrash: true, isActive: false });
+
+        return {
+          intent: 'trash_habit',
+          action: null,
+          reply: `Trashed habit "${FieldEncryption.decrypt(matched.title)}".`,
+          data: { habitId: matched._id }
+        };
+      }
+
+      case INTENT_TYPES.DELETE_WORKSPACE: {
+        const wsName = (data?.name || '').trim().toLowerCase();
+        if (!wsName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Which workspace should I delete?', data: null };
+        }
+
+        const allWs = await Workspace.find({
+          owner: userId,
+          isDeleted: false
+        }).select('name').lean();
+
+        const matched = allWs.find(w => {
+          const decrypted = FieldEncryption.decrypt(w.name || '').toLowerCase();
+          return decrypted.includes(wsName) || wsName.includes(decrypted);
+        });
+
+        if (!matched) {
+          return { intent: 'error', action: null, reply: `No workspace matching "${wsName}" found (you must be the owner).`, data: null };
+        }
+
+        await Workspace.findByIdAndUpdate(matched._id, { isDeleted: true });
+
+        return {
+          intent: 'delete_workspace',
+          action: null,
+          reply: `Deleted workspace "${FieldEncryption.decrypt(matched.name)}".`,
+          data: { workspaceId: matched._id }
+        };
+      }
+
+      case INTENT_TYPES.RENAME_SUBTASK: {
+        const oldName = (data?.oldName || '').trim().toLowerCase();
+        const newName = (data?.newName || '').trim();
+        if (!oldName || !newName) {
+          return { intent: 'ask_clarification', action: null, reply: 'Specify the subtask to rename and the new name.', data: null };
+        }
+
+        const tasksWithSubtasks = await Task.find({
+          workspace: targetWorkspaceId,
+          $or: [{ creator: userId }, { assignees: userId }],
+          isDeleted: false,
+          isTrash: false,
+          'subtasks.0': { $exists: true }
+        }).select('title subtasks');
+
+        let matchedTask = null;
+        let matchedSubtask = null;
+
+        for (const task of tasksWithSubtasks) {
+          const st = task.subtasks.find(s =>
+            s.title && s.title.toLowerCase().includes(oldName)
+          );
+          if (st) {
+            matchedTask = task;
+            matchedSubtask = st;
+            break;
+          }
+        }
+
+        if (!matchedSubtask) {
+          return { intent: 'error', action: null, reply: `No subtask matching "${oldName}" found.`, data: null };
+        }
+
+        matchedSubtask.title = newName;
+        await matchedTask.save();
+
+        return {
+          intent: 'rename_subtask',
+          action: null,
+          reply: `Renamed subtask to "${newName}".`,
+          data: { taskId: matchedTask._id, subtaskId: matchedSubtask._id }
         };
       }
 

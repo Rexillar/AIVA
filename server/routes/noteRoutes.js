@@ -42,7 +42,12 @@ import {
   createNote,
   updateNote,
   deleteNote,
-  shareNote
+  shareNote,
+  restoreNote,
+  restoreMultipleNotes,
+  deleteMultipleNotes,
+  permanentlyDeleteMultipleNotes,
+  aiFormatNoteContent
 } from '../controllers/noteController.js';
 import { protect } from '../middlewares/authMiddleware.js';
 
@@ -62,5 +67,12 @@ router.route('/:id')
   .delete(deleteNote);
 
 router.post('/:id/share', shareNote);
+router.put('/:id/restore', restoreNote);
+router.post('/:id/ai-format', aiFormatNoteContent);
+
+// Batch operations
+router.post('/batch/delete', deleteMultipleNotes);
+router.post('/batch/restore', restoreMultipleNotes);
+router.delete('/batch/delete-permanent', permanentlyDeleteMultipleNotes);
 
 export default router;

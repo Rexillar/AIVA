@@ -85,7 +85,7 @@ export const INTENT_TYPES = {
 
   PAUSE_HABIT: 'pause_habit',
   RESUME_HABIT: 'resume_habit',
-  ARCHIVE_HABIT: 'archive_habit',
+  TRASH_HABIT: 'trash_habit',
   UNDO_HABIT_COMPLETION: 'undo_habit_completion',
 
   // Batch operations (require confirmation)
@@ -106,9 +106,8 @@ export const INTENT_TYPES = {
   DELETE_ALL_REMINDERS_ON_DATE: 'delete_all_reminders_on_date',
 
   PAUSE_MULTIPLE_HABITS: 'pause_multiple_habits',
-  ARCHIVE_MULTIPLE_HABITS: 'archive_multiple_habits',
-  ARCHIVE_ALL_COMPLETED_TASKS: 'archive_all_completed_tasks',
-  RESTORE_ALL_ARCHIVED_TASKS: 'restore_all_archived_tasks',
+  TRASH_MULTIPLE_HABITS: 'trash_multiple_habits',
+  TRASH_ALL_COMPLETED_TASKS: 'trash_all_completed_tasks',
   RESTORE_ALL_TRASHED_TASKS: 'restore_all_trashed_tasks',
 
   CREATE_MULTIPLE_SUBTASKS: 'create_multiple_subtasks',
@@ -174,6 +173,9 @@ const INTENT_PATTERNS = {
   ],
   [INTENT_TYPES.LIST_WORKSPACES]: [
     /^(show|list|display|get|view)\s+(all\s+)?(my\s+)?workspaces?$/i,
+    /^(show|list|display|get|view)\s+(out\s+)?(the\s+)?(name|names)\s+of\s+(all\s+)?(my\s+)?workspaces?$/i,
+    /^(list|show)\s+all\s+workspaces?$/i,
+    /^what\s+are\s+(all\s+)?(my\s+)?workspaces?$/i,
     /^workspaces?$/i
   ],
   [INTENT_TYPES.LIST_REMINDERS]: [
@@ -304,7 +306,7 @@ const INTENT_PATTERNS = {
     /^restore\s+(.+?)(\s+task)?$/i
   ],
   [INTENT_TYPES.RESTORE_ALL_TRASHED_TASKS]: [
-    /^(restore|recover)\s+all\s+(trashed|deleted)\s+tasks?$/i,
+    /^(restore|recover|untrash)\s+all\s+(trashed|deleted)\s+tasks?$/i,
     /^restore\s+all\s+tasks?\s+from\s+trash$/i
   ],
 
@@ -331,13 +333,13 @@ const INTENT_PATTERNS = {
     /^(resume|restart|continue)\s+(habit\s+)?(.+)$/i,
     /^resume\s+(.+?)\s+habit$/i
   ],
-  [INTENT_TYPES.ARCHIVE_HABIT]: [
-    /^(archive|end)\s+(habit\s+)?(.+)$/i,
-    /^archive\s+(.+?)\s+habit$/i
+  [INTENT_TYPES.TRASH_HABIT]: [
+    /^(trash|remove|trash|end)\s+(habit\s+)?(.+)$/i,
+    /^trash\s+(.+?)\s+habit$/i
   ],
-  [INTENT_TYPES.ARCHIVE_MULTIPLE_HABITS]: [
-    /^(archive|end)\s+(multiple|several)\s+habits?$/i,
-    /^archive\s+habits?\s+(.+?)\s*,\s*(.+?)$/i
+  [INTENT_TYPES.TRASH_MULTIPLE_HABITS]: [
+    /^(trash|remove)\s+(multiple|several)\s+habits?$/i,
+    /^trash\s+habits?\s+(.+?)\s*,\s*(.+?)$/i
   ],
   [INTENT_TYPES.UNDO_HABIT_COMPLETION]: [
     /^(undo|revert|cancel)\s+(the\s+)?completion\s+(of|for)\s+(.+?)(\s+habit)?$/i,
@@ -413,12 +415,8 @@ const INTENT_PATTERNS = {
     /^(delete|remove)\s+(workspace\s+)?(.+)$/i
   ],
 
-  // ==================== ARCHIVE/RESTORE OPERATIONS ====================
-  [INTENT_TYPES.ARCHIVE_ALL_COMPLETED_TASKS]: [
-    /^(archive|move\s+to\s+archive)\s+all\s+completed\s+tasks?$/i
-  ],
-  [INTENT_TYPES.RESTORE_ALL_ARCHIVED_TASKS]: [
-    /^(restore|unarchive)\s+all\s+archived\s+tasks?$/i
+  [INTENT_TYPES.RESTORE_ALL_TRASHED_TASKS]: [
+    /^(restore|untrash)\s+all\s+trashed\s+tasks?$/i
   ],
 
   // ==================== WORKSPACE OPERATIONS ====================
@@ -476,16 +474,61 @@ export const classifyIntent = (message) => {
       const match = normalizedMessage.match(pattern);
       if (match) {
         const data = extractIntentData(intentType, match, normalizedMessage);
-        const requiresAI = [
+
+        // ═══════════════════════════════════════════════════════════
+        //  ROUTING RULE:
+        //    State-modifying intents → DETERMINISTIC (no AI)
+        //    State-reasoning intents → AI (Gemini)
+        //
+        //  This eliminates AI hallucination on CRUD operations
+        //  and reduces latency + API cost for 90% of commands.
+        // ═══════════════════════════════════════════════════════════
+
+        // Intents that ALWAYS need AI (they reason about state, not modify it)
+        const alwaysAIIntents = [
           INTENT_TYPES.ANALYTICS,
           INTENT_TYPES.SUMMARY,
-          INTENT_TYPES.RECOMMENDATION
-        ].includes(intentType);
+          INTENT_TYPES.RECOMMENDATION,
+          INTENT_TYPES.MULTI_INTENT
+        ];
 
+        if (alwaysAIIntents.includes(intentType)) {
+          return { type: intentType, confidence: 0.95, requiresAI: true, data };
+        }
+
+        // Creation intents need a name/detail to execute deterministically
+        // If name is missing, fall to AI to ask for it conversationally
+        const creationIntents = [
+          INTENT_TYPES.CREATE_TASK,
+          INTENT_TYPES.CREATE_TASK_IN_WORKSPACE,
+          INTENT_TYPES.CREATE_HABIT,
+          INTENT_TYPES.CREATE_NOTE,
+          INTENT_TYPES.CREATE_WORKSPACE,
+          INTENT_TYPES.CREATE_SUBTASK,
+          INTENT_TYPES.CREATE_REMINDER
+        ];
+
+        if (creationIntents.includes(intentType)) {
+          const hasDetails =
+            (intentType === INTENT_TYPES.CREATE_TASK && !!data?.name) ||
+            (intentType === INTENT_TYPES.CREATE_TASK_IN_WORKSPACE && !!data?.taskName && !!data?.workspaceName) ||
+            (intentType === INTENT_TYPES.CREATE_HABIT && !!data?.name) ||
+            (intentType === INTENT_TYPES.CREATE_NOTE && !!data?.name) ||
+            (intentType === INTENT_TYPES.CREATE_WORKSPACE && !!data?.name) ||
+            (intentType === INTENT_TYPES.CREATE_SUBTASK && !!data?.subtaskName && !!data?.taskName) ||
+            (intentType === INTENT_TYPES.CREATE_REMINDER && !!data?.name);
+
+          // CREATE_REMINDER still goes to AI for time parsing
+          const requiresAI = !hasDetails || intentType === INTENT_TYPES.CREATE_REMINDER;
+          return { type: intentType, confidence: 0.95, requiresAI, data };
+        }
+
+        // Everything else (complete, delete, rename, move, search, list, etc.)
+        // → DETERMINISTIC. These have direct DB handlers.
         return {
           type: intentType,
           confidence: 0.95,
-          requiresAI,
+          requiresAI: false,
           data
         };
       }
@@ -583,7 +626,7 @@ const extractIntentData = (intentType, match, fullMessage) => {
     case INTENT_TYPES.REOPEN_TASK:
     case INTENT_TYPES.PAUSE_HABIT:
     case INTENT_TYPES.RESUME_HABIT:
-    case INTENT_TYPES.ARCHIVE_HABIT:
+    case INTENT_TYPES.TRASH_HABIT:
       return { name: match[3]?.trim() || match[1]?.trim() };
 
     case INTENT_TYPES.RENAME_TASK:
@@ -658,11 +701,10 @@ const extractIntentData = (intentType, match, fullMessage) => {
     case INTENT_TYPES.DELETE_ALL_COMPLETED_TASKS:
     case INTENT_TYPES.DELETE_ALL_TASKS:
     case INTENT_TYPES.DELETE_ALL_SUBTASKS:
-    case INTENT_TYPES.ARCHIVE_ALL_COMPLETED_TASKS:
-    case INTENT_TYPES.RESTORE_ALL_ARCHIVED_TASKS:
+    case INTENT_TYPES.TRASH_ALL_COMPLETED_TASKS:
     case INTENT_TYPES.RESTORE_ALL_TRASHED_TASKS:
     case INTENT_TYPES.PAUSE_MULTIPLE_HABITS:
-    case INTENT_TYPES.ARCHIVE_MULTIPLE_HABITS:
+    case INTENT_TYPES.TRASH_MULTIPLE_HABITS:
     case INTENT_TYPES.DELETE_MULTIPLE_HABITS:
       return { requiresConfirmation: true };
 

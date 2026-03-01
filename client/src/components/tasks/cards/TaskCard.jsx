@@ -76,12 +76,15 @@ const TaskCard = ({ task, onUpdate, onMoveToTrash, isAdmin = false, isSubtask = 
   const [updateTask] = useUpdateTaskMutation();
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useSelector((state) => state.auth);
+  const { currentWorkspace } = useSelector((state) => state.workspace);
 
-  // Extract workspace ID from task
+  // Extract workspace ID from task - check all possible locations
+  // ExternalTasks (Google) store workspaceId directly, not nested in workspace object
   const workspaceId = (
     task.workspace?._id ||
     task.workspace ||
-    task.workspaceId
+    task.workspaceId ||
+    currentWorkspace?._id
   )?.toString();
 
 
@@ -128,8 +131,8 @@ const TaskCard = ({ task, onUpdate, onMoveToTrash, isAdmin = false, isSubtask = 
 
       if (isGoogleTask && hasGoogleCredentials) {
         // Handle Google Task deletion using the google tasks API endpoint
-        // Extract the actual task ID (remove 'google-' prefix if present)
-        const actualTaskId = taskId.replace('google-', '');
+        // Use task.googleTaskId (the real Google string ID) not the MongoDB _id
+        const actualTaskId = task.googleTaskId || taskId.replace('google-', '');
 
         // Get required parameters
         const googleAccountId = task.googleAccountId;
@@ -221,9 +224,13 @@ const TaskCard = ({ task, onUpdate, onMoveToTrash, isAdmin = false, isSubtask = 
     e.preventDefault();
     e.stopPropagation();
 
-    const workspaceId = task.workspace?._id || task.workspace;
+    // Use the outer workspaceId which resolves: task.workspace → task.workspaceId → currentWorkspace
     if (workspaceId) {
-      navigate(`/workspace/${workspaceId}/task/${task._id}`);
+      navigate(`/workspace/${workspaceId}/task/${task._id}`, {
+        // Pass the task in navigation state so TaskDetails can use it immediately
+        // without needing to fetch from the API (critical for Google ExternalTasks)
+        state: { task }
+      });
     } else {
       toast.error("Invalid workspace ID");
     }

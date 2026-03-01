@@ -86,6 +86,13 @@ import Canvas from "./pages/FocusCanvas";
 import LandingPage from "./pages/LandingPage";
 import GoogleCallbackHandler from "./components/workspace/integrations/GoogleCallbackHandler";
 import Drive from "./pages/Drive";
+import WorkspaceMeet from "./pages/WorkspaceMeet";
+import SourcesPage from "./pages/SourcesPage";
+import TemplatesPage from "./pages/TemplatesPage";
+import AutomationPage from "./pages/AutomationPage";
+import PlannerPage from "./pages/PlannerPage";
+import KnowledgePage from "./pages/KnowledgePage";
+import socketService from "./services/socket";
 
 import PropTypes from "prop-types";
 
@@ -193,6 +200,19 @@ function Layout() {
     }
   }, [navigate]);
 
+  // Handle Socket Connection
+  useEffect(() => {
+    if (isAuthenticated) {
+      socketService.connect();
+    } else {
+      socketService.disconnect();
+    }
+
+    return () => {
+      socketService.disconnect();
+    };
+  }, [isAuthenticated]);
+
   // Handle undefined workspace ID in URL
   useEffect(() => {
     if (location.pathname.includes('/workspace/undefined')) {
@@ -296,6 +316,12 @@ function Layout() {
                     <Route path="canvas" element={<Canvas />} />
                     <Route path="calendar" element={<WorkspaceCalendar />} />
                     <Route path="drive" element={<Drive />} />
+                    <Route path="voice/:channelId" element={<WorkspaceMeet />} />
+                    <Route path="sources" element={<SourcesPage />} />
+                    <Route path="templates" element={<TemplatesPage />} />
+                    <Route path="automation" element={<AutomationPage />} />
+                    <Route path="planner" element={<PlannerPage />} />
+                    <Route path="knowledge" element={<KnowledgePage />} />
                     <Route
                       path="team"
                       element={
@@ -411,7 +437,7 @@ function App() {
   return (
     <Provider store={store}>
       <ThemeProvider>
-        <main className="w-full min-h-screen bg-[#f3f4f6] dark:bg-gray-900">
+        <main className="w-full min-h-screen bg-gray-100 dark:bg-gray-950">
           <Routes>
             {/* Auth routes with AuthLayout */}
             <Route element={<AuthLayout />}>

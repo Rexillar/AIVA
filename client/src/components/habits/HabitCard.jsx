@@ -45,7 +45,7 @@ import {
   FaCheckCircle,
   FaCircle,
   FaPause,
-  FaArchive,
+  FaTrash,
   FaEllipsisV,
   FaClock,
   FaLightbulb,
@@ -67,7 +67,7 @@ export const HabitCard = ({
   habit,
   onEdit,
   onDelete,
-  onArchive,
+  onTrash,
   onPause,
   showNudge = false,
 }) => {
@@ -163,10 +163,10 @@ export const HabitCard = ({
               {habit.isPaused ? "Resume" : "Pause"}
             </button>
             <button
-              onClick={(e) => handleMenuAction(e, () => onArchive?.(habit._id))}
+              onClick={(e) => handleMenuAction(e, () => onTrash?.(habit._id))}
               className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600"
             >
-              Archive
+              Trash
             </button>
             <button
               onClick={(e) => handleMenuAction(e, () => onDelete?.(habit._id))}
@@ -193,11 +193,10 @@ export const HabitCard = ({
                 {habit.category}
               </p>
               <span
-                className={`text-xs px-2 py-0.5 rounded-full ${
-                  habit.visibility === "private"
+                className={`text-xs px-2 py-0.5 rounded-full ${habit.visibility === "private"
                     ? "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400"
                     : "bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400"
-                }`}
+                  }`}
               >
                 {habit.visibility === "private" ? "🔒 Private" : "👥 Team"}
               </span>
@@ -275,23 +274,17 @@ export const HabitCard = ({
               <span>Paused</span>
             </span>
           )}
-          {habit.isArchived && (
-            <span className="flex items-center space-x-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2 py-1 rounded">
-              <FaArchive size={10} />
-              <span>Archived</span>
-            </span>
-          )}
+          {/* Removed Archived badge */}
         </div>
 
         {/* Completion Toggle */}
         <button
           onClick={handleCompletionToggle}
           disabled={isLoading || habit.isPaused}
-          className={`p-3 rounded-full transition-all ${
-            isCompletedToday
+          className={`p-3 rounded-full transition-all ${isCompletedToday
               ? "bg-green-500 hover:bg-green-600"
               : "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
-          } ${habit.isPaused ? "opacity-50 cursor-not-allowed" : ""}`}
+            } ${habit.isPaused ? "opacity-50 cursor-not-allowed" : ""}`}
         >
           {isCompletedToday ? (
             <FaCheckCircle className="text-white" size={20} />
@@ -326,11 +319,10 @@ HabitCard.propTypes = {
     }),
     frequency: PropTypes.string,
     isPaused: PropTypes.bool,
-    isArchived: PropTypes.bool,
   }).isRequired,
   onEdit: PropTypes.func,
   onDelete: PropTypes.func,
-  onArchive: PropTypes.func,
+  onTrash: PropTypes.func,
   onPause: PropTypes.func,
   showNudge: PropTypes.bool, // New prop
 };

@@ -44,6 +44,7 @@ import Note from '../models/note.js';
 import Notification from '../models/notification.js';
 import Reminder from '../models/reminderModel.js';
 import { enhancedAssistantPrompt } from '../utils/enhancedAssistantPrompt.js';
+import { FieldEncryption } from '../utils/encryption.js';
 
 const apiKey = process.env.GEMINI_API_KEY;
 
@@ -52,6 +53,32 @@ const sessionContextCache = new Map();
 
 // Context retention time (30 minutes)
 const CONTEXT_RETENTION_MS = 30 * 60 * 1000;
+
+/**
+ * Decrypt workspace data
+ * Decrypts encrypted fields (name, description) from a workspace object
+ */
+const decryptWorkspace = (workspace) => {
+  if (!workspace) return null;
+  
+  // Convert to plain object if Mongoose document
+  const wsObj = workspace.toObject ? workspace.toObject() : workspace;
+  
+  return {
+    ...wsObj,
+    name: FieldEncryption.decrypt(wsObj.name || ''),
+    description: wsObj.description ? FieldEncryption.decrypt(wsObj.description) : null
+  };
+};
+
+/**
+ * Decrypt array of workspaces
+ */
+const decryptWorkspaces = (workspaces) => {
+  return Array.isArray(workspaces) 
+    ? workspaces.map(w => decryptWorkspace(w))
+    : [];
+};
 
 /**
  * Build comprehensive context for the AI
@@ -83,21 +110,26 @@ const buildEnhancedContext = async (userId, workspaceId) => {
       workspace: workspaceId,
       isActive: true,
       isPaused: false,
-      isArchived: false
+      isTrash: false,
+      isDeleted: false
     })
       .select('title category currentStreak totalCompletions completions frequency')
       .lean();
 
     // Fetch workspaces
-    const workspaces = await Workspace.find({
+    const workspacesRaw = await Workspace.find({
+      isDeleted: false,
       $or: [
         { owner: userId },
-        { members: userId }
+        { 'members.user': userId, 'members.isActive': true }
       ]
     })
       .select('name description isActive')
       .limit(10)
       .lean();
+    
+    // Decrypt workspace names and descriptions
+    const workspaces = decryptWorkspaces(workspacesRaw);
 
     // Fetch recent notes
     const recentNotes = await Note.find({
@@ -378,14 +410,18 @@ const executeAction = async (action, userId, workspaceId) => {
           return { success: true, data: workspace };
         } else if (method === 'GET') {
           // List user's workspaces
-          const workspaces = await Workspace.find({
+          const workspacesRaw = await Workspace.find({
             $or: [
               { owner: userId },
               { 'members.user': userId }
             ],
             isDeleted: false
           }).limit(50);
-          return { success: true, data: workspaces };
+          
+          // Decrypt workspace names and descriptions
+          const decryptedWorkspaces = decryptWorkspaces(workspacesRaw);
+          
+          return { success: true, data: decryptedWorkspaces };
         } else if (method === 'PATCH' && body.workspaceId) {
           // Update workspace
           const workspace = await Workspace.findById(body.workspaceId);
@@ -415,7 +451,7 @@ const executeAction = async (action, userId, workspaceId) => {
           // List notes
           const query = {
             workspace: workspaceId,
-            isTrashed: false,
+            isTrash: false,
             $or: [
               { creator: userId },
               { 'sharedWith.user': userId }
@@ -456,7 +492,7 @@ const executeAction = async (action, userId, workspaceId) => {
           // Delete (trash) note
           const note = await Note.findByIdAndUpdate(
             body.noteId,
-            { isTrashed: true, trashedAt: new Date(), trashedBy: userId },
+            { isTrash: true, trashedAt: new Date(), trashedBy: userId },
             { new: true }
           );
           return { success: true, data: note };

@@ -742,9 +742,6 @@ export const workspaceApiSlice = apiSlice.injectEndpoints({
           },
           role: invitation.role,
           status: invitation.status,
-          tier: invitation.tier,
-          perks: invitation.perks,
-          achievements: invitation.achievements,
           expiresAt: invitation.expiresAt,
           createdAt: invitation.createdAt,
         }));
@@ -878,6 +875,46 @@ export const workspaceApiSlice = apiSlice.injectEndpoints({
       }),
       invalidatesTags: ["Workspace"],
     }),
+
+    getVoiceChannels: builder.query({
+      query: (workspaceId) => ({
+        url: `${WORKSPACE_URL}/${workspaceId}/channels`,
+        method: "GET",
+        credentials: "include",
+      }),
+      providesTags: (result, error, workspaceId) => [
+        { type: "VoiceChannel", id: "LIST" },
+      ],
+    }),
+
+    createVoiceChannel: builder.mutation({
+      query: ({ workspaceId, name }) => ({
+        url: `${WORKSPACE_URL}/${workspaceId}/channels`,
+        method: "POST",
+        credentials: "include",
+        body: { name },
+      }),
+      invalidatesTags: [{ type: "VoiceChannel", id: "LIST" }],
+    }),
+
+    updateVoiceChannel: builder.mutation({
+      query: ({ workspaceId, channelId, ...data }) => ({
+        url: `${WORKSPACE_URL}/${workspaceId}/channels/${channelId}`,
+        method: "PUT",
+        credentials: "include",
+        body: data,
+      }),
+      invalidatesTags: [{ type: "VoiceChannel", id: "LIST" }],
+    }),
+
+    deleteVoiceChannel: builder.mutation({
+      query: ({ workspaceId, channelId }) => ({
+        url: `${WORKSPACE_URL}/${workspaceId}/channels/${channelId}`,
+        method: "DELETE",
+        credentials: "include",
+      }),
+      invalidatesTags: [{ type: "VoiceChannel", id: "LIST" }],
+    }),
   }),
   overrideExisting: false,
 });
@@ -918,4 +955,8 @@ export const {
   useGetTrashedWorkspacesQuery,
   usePermanentlyDeleteWorkspaceMutation,
   useClearWorkspaceNotificationsMutation,
+  useGetVoiceChannelsQuery,
+  useCreateVoiceChannelMutation,
+  useUpdateVoiceChannelMutation,
+  useDeleteVoiceChannelMutation,
 } = workspaceApiSlice;

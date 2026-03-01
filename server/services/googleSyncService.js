@@ -389,6 +389,51 @@ class GoogleSyncService {
         syncStatus: 'synced'
       };
 
+      // ─── Corruption Guard ───────────────────────────────────────────────────
+      // A previous bug sent encrypted cipher strings to Google (format: salt:iv:tag:cipher).
+      // If the title coming FROM Google looks like our encrypted format, don't store it.
+      // Instead, look up the linked AIVA task and use its decrypted title.
+      const isCipherFormat = (val) =>
+        typeof val === 'string' && /^[0-9a-f]{32,}:[0-9a-f]{24,}:[0-9a-f]{24,}:[0-9a-f]{6,}$/i.test(val);
+
+      if (isCipherFormat(taskData.title)) {
+        console.warn(`[GoogleSync] ⚠ Google returned an encrypted title for task ${task.id} — previous bug. Attempting to heal...`);
+        // Try to find the linked AIVA task for the real title
+        const linked = await ExternalTask.findOne({ googleTaskId: task.id, workspaceId });
+        if (linked?.aivaTaskId) {
+          const { default: Task } = await import('../models/task.js');
+          const aivaTask = await Task.findById(linked.aivaTaskId).lean();
+          if (aivaTask?.title) {
+            const { decryptDocument } = await import('../utils/encryption.js');
+            const decrypted = decryptDocument(aivaTask, ['title', 'description']);
+            taskData.title = decrypted.title || 'Untitled Task';
+            taskData.description = decrypted.description || '';
+            taskData.notes = decrypted.description || '';
+            console.log(`[GoogleSync] ✅ Healed title from AIVA task: "${taskData.title}"`);
+
+            // Also patch Google Tasks so the cipher string gets replaced with real title
+            try {
+              const { google } = await import('googleapis');
+              const googleAuthService = (await import('./googleAuthService.js')).default;
+              const auth = googleAuthService.getAuthenticatedClient(account.accessToken, account.refreshToken);
+              const tasksClient = google.tasks({ version: 'v1', auth });
+              await tasksClient.tasks.patch({
+                tasklist: taskList.id,
+                task: task.id,
+                requestBody: { title: taskData.title, notes: taskData.description || '' }
+              });
+              console.log(`[GoogleSync] ✅ Patched Google task with correct title: "${taskData.title}"`);
+            } catch (patchErr) {
+              console.warn(`[GoogleSync] Could not patch Google task title:`, patchErr.message);
+            }
+          }
+        } else {
+          // No linked AIVA task — skip storing this corrupted record
+          console.warn(`[GoogleSync] No linked AIVA task found. Skipping corrupted record.`);
+          return false;
+        }
+      }
+
       console.log(`[GoogleSync] Storing task data:`, {
         title: taskData.title,
         workspaceId: taskData.workspaceId,
@@ -414,14 +459,13 @@ class GoogleSyncService {
 
         if (hasChanges) {
           console.log(`[GoogleSync] Task has changes, updating: ${task.title}`);
-          result = await ExternalTask.findByIdAndUpdate(existingTask._id, taskData, { new: true });
+          // Use Object.assign + save() so Mongoose pre-save encryption hooks fire
+          Object.assign(existingTask, taskData);
+          result = await existingTask.save();
         } else {
           console.log(`[GoogleSync] Task unchanged, updating sync time: ${task.title}`);
-          result = await ExternalTask.findByIdAndUpdate(
-            existingTask._id,
-            { lastSyncedAt: new Date() },
-            { new: true }
-          );
+          existingTask.lastSyncedAt = new Date();
+          result = await existingTask.save();
         }
       } else {
         console.log(`[GoogleSync] Creating new task: ${task.title}`);

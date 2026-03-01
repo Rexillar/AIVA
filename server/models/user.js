@@ -123,49 +123,6 @@ const userSchema = new mongoose.Schema({
         time: { type: String, default: '09:00' } // 24-hour format
       }
     }
-  },
-  gamification: {
-    xp: {
-      type: Number,
-      default: 0
-    },
-    coins: {
-      type: Number,
-      default: 0
-    },
-    level: {
-      type: Number,
-      default: 1
-    },
-    tier: {
-      type: String,
-      enum: ['Novice', 'Investor', 'Architect', 'Visionary'],
-      default: 'Novice'
-    },
-    totalFocusTime: {
-      type: Number,
-      default: 0 // in minutes
-    },
-    lastReflectionDate: {
-      type: Date
-    },
-    achievements: [{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Achievement'
-    }],
-    streakData: {
-      currentStreak: {
-        type: Number,
-        default: 0
-      },
-      longestStreak: {
-        type: Number,
-        default: 0
-      },
-      lastActivityDate: {
-        type: Date
-      }
-    }
   }
 }, {
   timestamps: true,

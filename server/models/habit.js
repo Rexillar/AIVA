@@ -197,10 +197,20 @@ const habitSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  isArchived: {
+  isTrash: {
     type: Boolean,
     default: false
   },
+  trashedAt: Date,
+  trashedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  isDeleted: {
+    type: Boolean,
+    default: false
+  },
+  deletedAt: Date,
   tags: [{
     type: String,
     trim: true
@@ -220,10 +230,11 @@ const habitSchema = new mongoose.Schema({
 });
 
 // Indexes for better query performance
-habitSchema.index({ user: 1, workspace: 1, isArchived: 1 });
+habitSchema.index({ user: 1, workspace: 1, isTrash: 1 });
+habitSchema.index({ user: 1, workspace: 1, isDeleted: 1 });
 habitSchema.index({ user: 1, isActive: 1 });
-habitSchema.index({ workspace: 1, isArchived: 1 });
-habitSchema.index({ workspace: 1, visibility: 1, isArchived: 1 });
+habitSchema.index({ workspace: 1, isTrash: 1 });
+habitSchema.index({ workspace: 1, visibility: 1, isTrash: 1 });
 habitSchema.index({ 'completions.date': 1 });
 habitSchema.index({ startDate: 1, endDate: 1 });
 
@@ -395,7 +406,8 @@ habitSchema.statics.getDueToday = async function (userId, workspaceId) {
     workspace: workspaceId,
     isActive: true,
     isPaused: false,
-    isArchived: false,
+    isTrash: false,
+    isDeleted: false,
     $or: [
       { frequency: 'daily' },
       {
@@ -413,7 +425,8 @@ habitSchema.statics.getUserStatistics = async function (userId, workspaceId) {
   const habits = await this.find({
     user: userId,
     workspace: workspaceId,
-    isArchived: false
+    isTrash: false,
+    isDeleted: false
   });
 
   const totalHabits = habits.length;

@@ -75,6 +75,7 @@ export const SIDEBAR_LINKS = [
 
 // Task Priority Styles
 export const PRIORITY_STYLES = {
+  urgent: "text-purple-600 dark:text-purple-400",
   high: "text-red-600 dark:text-red-400",
   medium: "text-yellow-600 dark:text-yellow-400",
   low: "text-green-600 dark:text-green-400",
@@ -110,6 +111,10 @@ export const TASK_TYPE = {
 
 // Task Priority Colors
 export const priorityColors = {
+  urgent: {
+    bg: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+    text: "text-purple-700 dark:text-purple-400",
+  },
   high: {
     bg: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
     text: "text-red-700 dark:text-red-400",

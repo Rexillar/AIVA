@@ -64,6 +64,7 @@ const AddTask = ({ open = false, setOpen, onSuccess, editingTask = null }) => {
     stage: "todo",
     dueDate: "",
     assignees: [],
+    createInGoogle: false,
   });
 
   const [errors, setErrors] = useState([]);
@@ -83,13 +84,14 @@ const AddTask = ({ open = false, setOpen, onSuccess, editingTask = null }) => {
           ? format(new Date(editingTask.dueDate), "yyyy-MM-dd")
           : "",
         assignees: editingTask.assignees || [],
+        createInGoogle: !!editingTask.isGoogleSynced,
       });
     }
   }, [editingTask]);
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
     setErrors([]);
   };
 
@@ -150,12 +152,10 @@ const AddTask = ({ open = false, setOpen, onSuccess, editingTask = null }) => {
       return;
     }
 
-    setIsSubmitting(true);
-
     try {
       const taskData = {
         ...formData,
-        workspace: workspace._id,
+        workspaceId: workspace._id,
         assignees: formData.assignees,
       };
 
@@ -167,8 +167,20 @@ const AddTask = ({ open = false, setOpen, onSuccess, editingTask = null }) => {
         }).unwrap();
         toast.success("Task updated successfully");
       } else {
-        await createTask({ taskData, workspaceId: workspace._id }).unwrap();
-        toast.success("Task created successfully");
+        const result = await createTask({ taskData, workspaceId: workspace._id }).unwrap();
+
+        if (result?.isGoogleSynced) {
+          const accountEmail = result?.externalTask?.googleAccount?.email;
+          toast.success(
+            accountEmail
+              ? `Task created and synced to Google Tasks (${accountEmail}).`
+              : "Task created and synced to Google Tasks."
+          );
+        } else if (formData.createInGoogle) {
+          toast.success("Task created. Google sync was requested but could not be completed.");
+        } else {
+          toast.success("Task created successfully");
+        }
       }
 
       handleClose();
@@ -177,10 +189,10 @@ const AddTask = ({ open = false, setOpen, onSuccess, editingTask = null }) => {
       //console.error(`Error ${editingTask ? 'updating' : 'creating'} task:`, error);
       toast.error(
         error?.data?.message ||
-          `Failed to ${editingTask ? "update" : "create"} task`,
+        `Failed to ${editingTask ? "update" : "create"} task`,
       );
     } finally {
-      setIsSubmitting(false);
+      // no-op
     }
   };
 
@@ -192,6 +204,7 @@ const AddTask = ({ open = false, setOpen, onSuccess, editingTask = null }) => {
       stage: "todo",
       dueDate: "",
       assignees: [],
+      createInGoogle: false,
     });
     setErrors([]);
     setOpen(false);
@@ -206,9 +219,9 @@ const AddTask = ({ open = false, setOpen, onSuccess, editingTask = null }) => {
             {editingTask ? "Edit Task" : "Create New Task"}
           </Dialog.Title>
 
-          {errors.length > 0 && (
+          {Object.keys(errors).length > 0 && (
             <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
-              {errors.map((error, index) => (
+              {Object.values(errors).map((error, index) => (
                 <p
                   key={index}
                   className="text-sm text-red-600 dark:text-red-400"
@@ -227,7 +240,7 @@ const AddTask = ({ open = false, setOpen, onSuccess, editingTask = null }) => {
               onChange={handleChange}
               placeholder="Enter task title"
               required
-              error={errors.includes("Title is required")}
+              error={!!errors.title}
             />
 
             <Input
@@ -251,11 +264,10 @@ const AddTask = ({ open = false, setOpen, onSuccess, editingTask = null }) => {
                   value={formData.dueDate}
                   onChange={handleChange}
                   required
-                  className={`w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.includes("Due date is required")
+                  className={`w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 ${errors.dueDate
                       ? "border-red-500"
                       : ""
-                  }`}
+                    }`}
                 />
               </div>
 
@@ -274,6 +286,20 @@ const AddTask = ({ open = false, setOpen, onSuccess, editingTask = null }) => {
                   <option value="high">High Priority</option>
                 </select>
               </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                id="createInGoogle"
+                type="checkbox"
+                name="createInGoogle"
+                checked={formData.createInGoogle}
+                onChange={handleChange}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <label htmlFor="createInGoogle" className="text-sm text-gray-700 dark:text-gray-300">
+                Sync this task to Google Tasks
+              </label>
             </div>
 
             <div>

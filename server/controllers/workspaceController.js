@@ -38,6 +38,7 @@
 import asyncHandler from 'express-async-handler';
 import { Workspace } from '../models/workspace.js';
 import User from '../models/user.js';
+import VoiceChannel from '../models/voiceChannel.js';
 import Task from '../models/task.js';
 import WorkspaceInvitation from '../models/workspaceInvitation.js';
 import {
@@ -49,6 +50,7 @@ import {
   emailService
 } from '../services/emailService.js';
 import crypto from 'crypto';
+import { emitToWorkspace } from '../config/socket.js';
 
 // @desc    Get user's workspaces
 // @route   GET /api/workspaces
@@ -935,3 +937,163 @@ export const updateMemberPermissions = async (req, res) => {
     res.status(500).json({ message: 'Error updating member permissions' });
   }
 };
+
+// ==========================================
+// VOICE CHANNELS
+// ==========================================
+
+// @desc    Get all voice channels for a workspace
+// @route   GET /api/workspaces/:id/channels
+// @access  Private
+export const getVoiceChannels = asyncHandler(async (req, res) => {
+  const { id: workspaceId } = req.params;
+
+  const workspace = await Workspace.findById(workspaceId);
+  if (!workspace) {
+    res.status(404);
+    throw new Error('Workspace not found');
+  }
+
+  // Ensure user is member
+  const isMember = workspace.members.some(
+    m => m.user.toString() === req.user._id.toString() || workspace.owner.toString() === req.user._id.toString()
+  );
+
+  if (!isMember) {
+    res.status(403);
+    throw new Error('Not authorized to view channels for this workspace');
+  }
+
+  const channels = await VoiceChannel.find({ workspaceId }).populate('activeParticipants', 'name avatar');
+
+  res.json({
+    status: true,
+    data: channels
+  });
+});
+
+// @desc    Create a new voice channel
+// @route   POST /api/workspaces/:id/channels
+// @access  Private
+export const createVoiceChannel = asyncHandler(async (req, res) => {
+  const { id: workspaceId } = req.params;
+  const { name } = req.body;
+
+  if (!name || !name.trim()) {
+    res.status(400);
+    throw new Error('Channel name is required');
+  }
+
+  const workspace = await Workspace.findById(workspaceId);
+  if (!workspace) {
+    res.status(404);
+    throw new Error('Workspace not found');
+  }
+
+  // Ensure user is member
+  const isMember = workspace.members.some(
+    m => m.user.toString() === req.user._id.toString() || workspace.owner.toString() === req.user._id.toString()
+  );
+
+  if (!isMember) {
+    res.status(403);
+    throw new Error('Not authorized to create channels in this workspace');
+  }
+
+  const existingChannel = await VoiceChannel.findOne({ workspaceId, name: name.trim() });
+  if (existingChannel) {
+    res.status(400);
+    throw new Error('A channel with this name already exists');
+  }
+
+  const channel = await VoiceChannel.create({
+    name: name.trim(),
+    workspaceId,
+    activeParticipants: []
+  });
+
+  res.status(201).json({
+    status: true,
+    data: channel
+  });
+});
+
+// @desc    Update a voice channel (e.g. attaching a Google Meet link)
+// @route   PUT /api/workspaces/:id/channels/:channelId
+// @access  Private
+export const updateVoiceChannel = asyncHandler(async (req, res) => {
+  const { id: workspaceId, channelId } = req.params;
+  const { activeMeetLink } = req.body;
+
+  const workspace = await Workspace.findById(workspaceId);
+  if (!workspace) {
+    res.status(404);
+    throw new Error('Workspace not found');
+  }
+
+  // Ensure user is member
+  const isMember = workspace.members.some(
+    m => m.user.toString() === req.user._id.toString() || workspace.owner.toString() === req.user._id.toString()
+  );
+
+  if (!isMember) {
+    res.status(403);
+    throw new Error('Not authorized');
+  }
+
+  const channel = await VoiceChannel.findOneAndUpdate(
+    { _id: channelId, workspaceId },
+    { $set: { activeMeetLink } },
+    { new: true }
+  ).populate('activeParticipants', 'name avatar');
+
+  if (!channel) {
+    res.status(404);
+    throw new Error('Voice channel not found');
+  }
+
+  // Broadcast the update so everyone gets the new link without refetching
+  emitToWorkspace(workspaceId, 'voice:channel_updated', channel);
+
+  res.json({
+    status: true,
+    data: channel
+  });
+});
+
+// @desc    Delete a voice channel
+// @route   DELETE /api/workspaces/:id/channels/:channelId
+// @access  Private
+export const deleteVoiceChannel = asyncHandler(async (req, res) => {
+  const { id: workspaceId, channelId } = req.params;
+
+  const workspace = await Workspace.findById(workspaceId);
+  if (!workspace) {
+    res.status(404);
+    throw new Error('Workspace not found');
+  }
+
+  // Check if owner or admin
+  const isOwner = workspace.owner.toString() === req.user._id.toString();
+  const isAdmin = workspace.members.some(
+    m => m.user.toString() === req.user._id.toString() && m.role === 'admin'
+  );
+
+  if (!isOwner && !isAdmin) {
+    res.status(403);
+    throw new Error('Not authorized to delete channels');
+  }
+
+  const channel = await VoiceChannel.findOne({ _id: channelId, workspaceId });
+  if (!channel) {
+    res.status(404);
+    throw new Error('Voice channel not found');
+  }
+
+  await channel.deleteOne();
+
+  res.json({
+    status: true,
+    message: 'Voice channel deleted successfully'
+  });
+});

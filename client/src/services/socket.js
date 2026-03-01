@@ -53,9 +53,11 @@ class SocketService {
       return;
     }
 
-    const API_URL = import.meta.env.VITE_API_URL || "/";
+    // Strip any path (e.g. /api) — Socket.IO must connect to the root URL only
+    const rawUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    const socketUrl = new URL(rawUrl).origin; // e.g. "http://localhost:5000"
 
-    this.socket = io(API_URL, {
+    this.socket = io(socketUrl, {
       auth: { token },
       reconnection: true,
       reconnectionDelay: 1000,
@@ -87,22 +89,56 @@ class SocketService {
 
   // Workspace Methods
   joinWorkspace(workspaceId) {
-    if (this.socket && this.isConnected) {
-      this.socket.emit("join:workspace", workspaceId);
-      console.log(`Joined workspace: ${workspaceId}`);
+    if (this.socket) {
+      if (this.socket.connected) {
+        this.socket.emit("join:workspace", workspaceId);
+      } else {
+        this.socket.once('connect', () => {
+          this.socket.emit("join:workspace", workspaceId);
+        });
+      }
     }
   }
 
   leaveWorkspace(workspaceId) {
-    if (this.socket && this.isConnected) {
+    if (this.socket && this.socket.connected) {
       this.socket.emit("leave:workspace", workspaceId);
       console.log(`Left workspace: ${workspaceId}`);
     }
   }
 
+  // Voice Channel Methods
+  joinVoiceChannel(workspaceId, channelId) {
+    if (this.socket) {
+      if (this.socket.connected) {
+        this.socket.emit("voice:join_channel", { workspaceId, channelId });
+      } else {
+        this.socket.once('connect', () => {
+          this.socket.emit("voice:join_channel", { workspaceId, channelId });
+        });
+      }
+    }
+  }
+
+  leaveVoiceChannel(workspaceId) {
+    if (this.socket && this.socket.connected) {
+      this.socket.emit("voice:leave_channel", { workspaceId });
+    }
+  }
+
+  streamMeetingAudio(workspaceId, channelId, audioBlob) {
+    if (this.socket && this.socket.connected) {
+      this.socket.emit("voice:audio_stream", {
+        workspaceId,
+        channelId,
+        audioData: audioBlob
+      });
+    }
+  }
+
   // Chat Methods
   sendMessage(workspaceId, message) {
-    if (this.socket && this.isConnected) {
+    if (this.socket && this.socket.connected) {
       this.socket.emit("chat:send_message", {
         workspaceId,
         message,

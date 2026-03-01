@@ -57,7 +57,8 @@ const GoogleTaskDialog = ({ isOpen, onClose, task, workspaceId, onSuccess }) => 
     title: '',
     description: '',
     dueDate: '',
-    status: 'needsAction'
+    status: 'needsAction',
+    priority: 'medium'
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -69,7 +70,8 @@ const GoogleTaskDialog = ({ isOpen, onClose, task, workspaceId, onSuccess }) => 
         title: task.title || '',
         description: task.description || task.notes || '',
         dueDate: task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '',
-        status: task.status || 'needsAction'
+        status: task.status || 'needsAction',
+        priority: task.priority || 'medium'
       });
     }
   }, [task]);
@@ -97,6 +99,7 @@ const GoogleTaskDialog = ({ isOpen, onClose, task, workspaceId, onSuccess }) => 
         notes: formData.description.trim(),
         dueDate: formData.dueDate ? formData.dueDate : null,
         status: formData.status,
+        priority: formData.priority,
         googleAccountId: task.googleAccountId,
         googleTaskListId: task.googleTaskListId
       };
@@ -179,7 +182,8 @@ const GoogleTaskDialog = ({ isOpen, onClose, task, workspaceId, onSuccess }) => 
           title: googleData.title,
           description: googleData.notes || '',
           dueDate: googleData.due ? new Date(googleData.due).toISOString().split('T')[0] : '',
-          status: googleData.status
+          status: googleData.status,
+          priority: task.priority || 'medium'
         });
 
         // Update task with Google version
@@ -190,6 +194,7 @@ const GoogleTaskDialog = ({ isOpen, onClose, task, workspaceId, onSuccess }) => 
             notes: googleData.notes || '',
             dueDate: googleData.due,
             status: googleData.status,
+            priority: task.priority || 'medium',
             googleAccountId: task.googleAccountId,
             googleTaskListId: task.googleTaskListId,
             forceSync: true
@@ -205,6 +210,7 @@ const GoogleTaskDialog = ({ isOpen, onClose, task, workspaceId, onSuccess }) => 
             notes: formData.description,
             dueDate: formData.dueDate,
             status: formData.status,
+            priority: formData.priority,
             googleAccountId: task.googleAccountId,
             googleTaskListId: task.googleTaskListId,
             forceSync: true
@@ -390,8 +396,8 @@ const GoogleTaskDialog = ({ isOpen, onClose, task, workspaceId, onSuccess }) => 
                     />
                   </div>
 
-                  {/* Due Date and Status */}
-                  <div className="grid grid-cols-2 gap-4">
+                  {/* Due Date, Status, and Priority */}
+                  <div className="grid grid-cols-3 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Due Date
@@ -415,6 +421,22 @@ const GoogleTaskDialog = ({ isOpen, onClose, task, workspaceId, onSuccess }) => 
                       >
                         <option value="needsAction">To Do</option>
                         <option value="completed">Completed</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Priority
+                      </label>
+                      <select
+                        value={formData.priority}
+                        onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                      >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
                       </select>
                     </div>
                   </div>

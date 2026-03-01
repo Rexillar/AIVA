@@ -60,6 +60,13 @@ export const apiSlice = createApi({
     "Note",
     "File",
     "ChatMessage",
+    "Source",
+    "Knowledge",
+    "DecisionLog",
+    "Template",
+    "AutomationRule",
+    "Orchestration",
+    "Gmail",
   ],
   endpoints: () => ({}),
 });

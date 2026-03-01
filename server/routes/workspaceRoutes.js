@@ -63,14 +63,17 @@ import {
   updateMemberRole,
   getMemberPermissions,
   updateMemberPermissions,
-  getAllPrivateWorkspaces
+  getAllPrivateWorkspaces,
+  getVoiceChannels,
+  createVoiceChannel,
+  deleteVoiceChannel,
+  updateVoiceChannel
 } from '../controllers/workspaceController.js';
 import {
   sendInvitation,
   getPendingInvitations,
   handleInvitation,
-  getInvitationDetails,
-  getReferralLeaderboard
+  getInvitationDetails
 } from '../controllers/invitationController.js';
 import { Workspace, WorkspaceInvitation } from "../models/index.js";
 import { File } from "../models/index.js";
@@ -110,9 +113,8 @@ router.get('/private/all', getAllPrivateWorkspaces);
 router.get('/private', getPrivateWorkspace);
 router.get('/public', getPublicWorkspaces);
 
-// Invitation and gamification routes
+// Invitation routes
 router.get('/invitations', getPendingInvitations);
-router.get('/invitations/leaderboard', getReferralLeaderboard);
 router.post('/:workspaceId/invitations', handleInvitation);
 router.post('/:workspaceId/invite', inviteLimiter, requirePermission('canInviteMembers'), sendInvitation);
 
@@ -371,5 +373,13 @@ router.post('/:workspaceId/task/:taskId/uploads', protect, checkWorkspaceAccess,
     });
   }
 }));
+
+// Voice Channel routes
+router.route('/:id/channels')
+  .get(getVoiceChannels)
+  .post(createVoiceChannel);
+router.route('/:id/channels/:channelId')
+  .put(updateVoiceChannel)
+  .delete(deleteVoiceChannel);
 
 export default router; 

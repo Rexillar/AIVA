@@ -78,7 +78,6 @@ const Trash = () => {
     {
       workspaceId: currentWorkspace?._id,
       filter: "trash",
-      includeArchived: true,
       includeDeleted: true,
       status: "all",
     },
@@ -102,7 +101,7 @@ const Trash = () => {
     if (!data?.tasks) return [];
 
     let tasks = data.tasks.filter(
-      (task) => task.isArchived === true || task.isDeleted === true,
+      (task) => task.isTrash === true || task.isDeleted === true,
     );
 
     if (searchTerm) {
@@ -171,13 +170,19 @@ const Trash = () => {
   };
 
   const handleOperation = async () => {
+    const workspaceId = currentWorkspace?._id;
+    if (!workspaceId) {
+      toast.error("Workspace not found. Please try again.");
+      return;
+    }
+
     try {
       if (type === "deleteSelected") {
         // Bulk delete
         const deletePromises = Array.from(selectedItems).map(taskId =>
           deleteTask({
             taskId,
-            workspaceId: currentWorkspace._id,
+            workspaceId,
           }).unwrap()
         );
         await Promise.all(deletePromises);
@@ -188,7 +193,7 @@ const Trash = () => {
         const restorePromises = Array.from(selectedItems).map(taskId =>
           restoreTask({
             taskId,
-            workspaceId: currentWorkspace._id,
+            workspaceId,
           }).unwrap()
         );
         await Promise.all(restorePromises);
@@ -197,13 +202,13 @@ const Trash = () => {
       } else if (type.includes("delete")) {
         await deleteTask({
           taskId: selected,
-          workspaceId: currentWorkspace._id,
+          workspaceId,
         }).unwrap();
         toast.success("Task deleted permanently");
       } else {
         await restoreTask({
           taskId: selected,
-          workspaceId: currentWorkspace._id,
+          workspaceId,
         }).unwrap();
         toast.success("Task restored successfully");
       }
@@ -261,7 +266,7 @@ const Trash = () => {
   const TableHeader = () => (
     <thead className="border-b border-gray-600/30">
       <tr className="text-left">
-        <th className="py-3 px-4 text-gray-200 font-medium">
+        <th className="py-3 px-4 text-gray-400 font-medium">
           <button
             onClick={handleSelectAll}
             className="flex items-center gap-2 hover:text-gray-100"
@@ -278,7 +283,7 @@ const Trash = () => {
             )}
           </button>
         </th>
-        <th className="py-3 px-4 text-gray-200 font-medium">
+        <th className="py-3 px-4 text-gray-700 dark:text-gray-200 font-medium">
           <button
             onClick={() => {
               if (sortBy === "title") {
@@ -288,7 +293,7 @@ const Trash = () => {
                 setSortOrder("asc");
               }
             }}
-            className="flex items-center gap-1 hover:text-gray-100"
+            className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-gray-100 transition-colors duration-200 hover:scale-105 active:scale-95"
           >
             Task Title
             {sortBy === "title" && (
@@ -300,7 +305,7 @@ const Trash = () => {
             )}
           </button>
         </th>
-        <th className="py-3 px-4 text-gray-200 font-medium">
+        <th className="py-3 px-4 text-gray-700 dark:text-gray-200 font-medium">
           <button
             onClick={() => {
               if (sortBy === "stage") {
@@ -310,7 +315,7 @@ const Trash = () => {
                 setSortOrder("asc");
               }
             }}
-            className="flex items-center gap-1 hover:text-gray-100"
+            className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-gray-100 transition-colors duration-200 hover:scale-105 active:scale-95"
           >
             Stage
             {sortBy === "stage" && (
@@ -322,7 +327,7 @@ const Trash = () => {
             )}
           </button>
         </th>
-        <th className="py-3 px-4 text-gray-200 font-medium">
+        <th className="py-3 px-4 text-gray-700 dark:text-gray-200 font-medium">
           <button
             onClick={() => {
               if (sortBy === "date") {
@@ -332,7 +337,7 @@ const Trash = () => {
                 setSortOrder("asc");
               }
             }}
-            className="flex items-center gap-1 hover:text-gray-100"
+            className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-gray-100 transition-colors duration-200 hover:scale-105 active:scale-95"
           >
             Modified On
             {sortBy === "date" && (
@@ -344,7 +349,7 @@ const Trash = () => {
             )}
           </button>
         </th>
-        <th className="py-3 px-4 text-gray-200 font-medium text-right">
+        <th className="py-3 px-4 text-gray-700 dark:text-gray-200 font-medium text-right">
           Actions
         </th>
       </tr>
@@ -352,16 +357,16 @@ const Trash = () => {
   );
 
   const TableRow = ({ item }) => (
-    <tr className="border-b border-gray-700/30 hover:bg-gray-700/20 transition-colors">
+    <tr className="border-b border-gray-200 dark:border-gray-700/30 hover:bg-gray-50 dark:hover:bg-gray-700/20 transition-all duration-200 ease-in-out hover:shadow-sm">
       <td className="py-3 px-4">
         <button
           onClick={() => handleSelectItem(item._id)}
-          className="flex items-center justify-center"
+          className="flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95"
         >
           {selectedItems.has(item._id) ? (
-            <MdCheckBox size={20} className="text-blue-500" />
+            <MdCheckBox size={20} className="text-blue-500 transition-all duration-200 animate-in zoom-in-50" />
           ) : (
-            <MdCheckBoxOutlineBlank size={20} className="text-gray-400" />
+            <MdCheckBoxOutlineBlank size={20} className="text-gray-400 dark:text-gray-500 transition-colors duration-200" />
           )}
         </button>
       </td>
@@ -372,7 +377,7 @@ const Trash = () => {
           />
           <div className="flex-1">
             <div className="flex items-center gap-2">
-              <p className="line-clamp-1 text-gray-200">{item?.title}</p>
+              <p className="line-clamp-1 text-gray-900 dark:text-gray-200 transition-colors duration-200">{item?.title}</p>
               {/* Google Tasks indicator */}
               {(item.source === 'google-tasks' || item.isGoogleSynced) && (
                 <span className="flex-shrink-0" title="Google Task">
@@ -405,7 +410,7 @@ const Trash = () => {
               )}
             </div>
             {item.description && (
-              <p className="text-sm text-gray-400 line-clamp-1 mt-0.5">
+              <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-1 mt-0.5">
                 {item.description}
               </p>
             )}
@@ -415,7 +420,7 @@ const Trash = () => {
       <td className="py-3 px-4">
         <span
           className={clsx(
-            "px-2.5 py-1 rounded-full text-xs font-medium capitalize",
+            "px-2.5 py-1 rounded-full text-xs font-medium capitalize transition-all duration-200 ease-in-out hover:scale-105",
             {
               "bg-yellow-500/20 text-yellow-300": item.stage === "todo",
               "bg-blue-500/20 text-blue-300": item.stage === "in_progress",
@@ -427,7 +432,7 @@ const Trash = () => {
           {item?.stage?.replace("_", " ")}
         </span>
       </td>
-      <td className="py-3 px-4 text-sm text-gray-400">
+      <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
         {new Date(item?.updatedAt || item?.date).toLocaleDateString("en-US", {
           year: "numeric",
           month: "short",
@@ -442,7 +447,7 @@ const Trash = () => {
             icon={<MdRestore size={18} />}
             variant="secondary"
             size="sm"
-            className="!p-2 text-gray-400 hover:text-blue-400 bg-gray-800 hover:bg-gray-700 border-gray-700"
+            className="!p-2 text-gray-600 hover:text-blue-500 dark:text-gray-400 dark:hover:text-blue-400 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-700 transition-all duration-200 hover:scale-110 hover:shadow-md active:scale-95"
             onClick={() => restoreClick(item._id)}
             tooltip="Restore task"
           />
@@ -450,7 +455,7 @@ const Trash = () => {
             icon={<MdDelete size={18} />}
             variant="secondary"
             size="sm"
-            className="!p-2 text-gray-400 hover:text-red-400 bg-gray-800 hover:bg-gray-700 border-gray-700"
+            className="!p-2 text-gray-600 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-700 transition-all duration-200 hover:scale-110 hover:shadow-md active:scale-95"
             onClick={() => deleteClick(item._id)}
             tooltip="Delete permanently"
           />
@@ -463,9 +468,9 @@ const Trash = () => {
     <div className="w-full h-full p-6">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Title title="Trash" className="text-gray-200 !text-2xl" />
+          <Title title="Trash" className="text-gray-900 dark:text-gray-200 !text-2xl" />
           {filteredTasks?.length > 0 && (
-            <span className="px-2 py-1 text-xs font-medium text-gray-400 bg-gray-800 rounded-full">
+            <span className="px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-full border border-gray-200 dark:border-gray-700 transition-all duration-200 hover:scale-105">
               {filteredTasks.length}{" "}
               {filteredTasks.length === 1 ? "item" : "items"}
             </span>
@@ -479,10 +484,10 @@ const Trash = () => {
               placeholder="Search tasks..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="pl-10 pr-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 hover:border-gray-400 dark:hover:border-gray-600"
             />
             <MdSearch
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 transition-colors duration-200"
               size={20}
             />
           </div>
@@ -510,7 +515,7 @@ const Trash = () => {
         </div>
       </div>
 
-      <div className="bg-gray-900/50 rounded-lg border border-gray-800">
+      <div className="bg-white dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm transition-shadow duration-300 hover:shadow-md">
         <div className="overflow-x-auto">
           <table className="w-full">
             <TableHeader />
@@ -521,7 +526,7 @@ const Trash = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="5" className="py-8 text-center text-gray-400">
+                  <td colSpan="5" className="py-8 text-center text-gray-500 dark:text-gray-400">
                     <div className="flex flex-col items-center gap-2">
                       <MdDelete size={24} />
                       <p>No items in trash</p>

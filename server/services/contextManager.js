@@ -42,6 +42,7 @@ import { Workspace } from '../models/workspace.js';
 import Note from '../models/note.js';
 import Notification from '../models/notification.js';
 import Reminder from '../models/reminderModel.js';
+import { FieldEncryption } from '../utils/encryption.js';
 
 // Context priority levels
 export const PRIORITY_LEVELS = {
@@ -54,6 +55,30 @@ export const PRIORITY_LEVELS = {
 // Context cache with metadata
 const contextCache = new Map();
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Decrypt workspace data
+ */
+const decryptWorkspace = (workspace) => {
+  if (!workspace) return null;
+  
+  const wsObj = workspace.toObject ? workspace.toObject() : workspace;
+  
+  return {
+    ...wsObj,
+    name: FieldEncryption.decrypt(wsObj.name || ''),
+    description: wsObj.description ? FieldEncryption.decrypt(wsObj.description) : null
+  };
+};
+
+/**
+ * Decrypt array of workspaces
+ */
+const decryptWorkspaces = (workspaces) => {
+  return Array.isArray(workspaces) 
+    ? workspaces.map(w => decryptWorkspace(w))
+    : [];
+};
 
 /**
  * Context structure with update tracking
@@ -100,7 +125,7 @@ const buildCriticalContext = async (userId, workspaceId) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const [activeWorkspace, todayTasks, activeHabits] = await Promise.all([
+  const [activeWorkspaceRaw, todayTasks, activeHabits] = await Promise.all([
     Workspace.findById(workspaceId).select('name description isActive').lean(),
     Task.find({
       workspace: workspaceId,
@@ -132,6 +157,9 @@ const buildCriticalContext = async (userId, workspaceId) => {
       completedToday: isCompletedToday
     };
   });
+
+  // Decrypt workspace
+  const activeWorkspace = decryptWorkspace(activeWorkspaceRaw);
 
   return {
     workspace: activeWorkspace,
@@ -200,7 +228,7 @@ const buildMediumPriorityContext = async (userId, workspaceId) => {
     Note.find({
       user: userId,
       workspace: workspaceId,
-      isTrashed: false
+      isTrash: false
     }).select('title tags updatedAt').sort({ updatedAt: -1 }).limit(10).lean(),
     Reminder.find({
       user: userId,
@@ -234,13 +262,20 @@ const buildMediumPriorityContext = async (userId, workspaceId) => {
  * Build low priority context (analytics/historical)
  */
 const buildLowPriorityContext = async (userId, workspaceId) => {
-  const [allWorkspaces, taskStats, habitStats] = await Promise.all([
+  const [allWorkspacesRaw, taskStats, habitStats] = await Promise.all([
     Workspace.find({
-      $or: [{ owner: userId }, { 'members.user': userId }]
+      isDeleted: false,
+      $or: [
+        { owner: userId },
+        { 'members.user': userId, 'members.isActive': true }
+      ]
     }).select('name isActive').limit(10).lean(),
     getTaskStatistics(userId, workspaceId),
     Habit.getUserStatistics(userId, workspaceId)
   ]);
+
+  // Decrypt workspaces
+  const allWorkspaces = decryptWorkspaces(allWorkspacesRaw);
 
   return {
     workspaces: allWorkspaces.map(w => ({ name: w.name, isActive: w.isActive })),

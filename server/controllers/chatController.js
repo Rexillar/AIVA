@@ -130,7 +130,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
   // - Voice processing support
   // - Proactive suggestions
   const response = await handleChatbotQuery(message, req.user._id, req.body.workspaceId, {
-    includeSuggestions: true
+    includeSuggestions: false
   });
 
   res.status(200).json(response);

@@ -121,14 +121,7 @@ export const habitApiSlice = createApi({
         try {
           const result = await queryFulfilled;
           const response = result.data;
-
-          // Check if rewards were earned
-          // Note: Gamification functionality not implemented
-          // if (response.rewards) {
-          //   dispatch(showRewards(response.rewards));
-          // }
         } catch (error) {
-          // Handle error if needed
         }
       },
       invalidatesTags: ["Habit"],
@@ -138,11 +131,17 @@ export const habitApiSlice = createApi({
       transformResponse: (response) => response.data,
       providesTags: ["Habit"],
     }),
-    archiveHabit: builder.mutation({
+    trashHabit: builder.mutation({
       query: (id) => ({
-        url: `/habits/${id}`,
+        url: `/habits/${id}/trash`,
         method: "PATCH",
-        body: { archived: true },
+      }),
+      invalidatesTags: ["Habit"],
+    }),
+    restoreHabit: builder.mutation({
+      query: (id) => ({
+        url: `/habits/${id}/restore`,
+        method: "PATCH",
       }),
       invalidatesTags: ["Habit"],
     }),
@@ -199,7 +198,8 @@ export const {
   useGetHabitsDueTodayQuery,
   useToggleHabitCompletionMutation,
   useGetUserHabitAnalyticsQuery,
-  useArchiveHabitMutation,
+  useTrashHabitMutation,
+  useRestoreHabitMutation,
   usePauseHabitMutation,
   useAddHabitNoteMutation,
   useDeleteHabitNoteMutation,

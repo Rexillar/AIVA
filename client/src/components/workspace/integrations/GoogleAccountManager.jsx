@@ -47,6 +47,7 @@ import {
   clearMessages,
 } from '../../../slices/googleIntegrationSlice';
 import { toast } from 'sonner';
+import { useGetVoiceChannelsQuery } from '../../../redux/slices/api/workspaceApiSlice';
 import {
   PlusIcon,
   TrashIcon,
@@ -63,6 +64,9 @@ const GoogleAccountManager = ({ workspaceId }) => {
     (state) => state.googleIntegration
   );
   const [expandedAccount, setExpandedAccount] = useState(null);
+
+  const { data: channelsResp } = useGetVoiceChannelsQuery(workspaceId);
+  const activeMeets = channelsResp?.data?.filter(c => c.activeMeetLink) || [];
 
   // Debug: Log accounts whenever they change
   useEffect(() => {
@@ -594,6 +598,42 @@ const GoogleAccountManager = ({ workspaceId }) => {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Active Workspace Meets Section */}
+      {activeMeets.length > 0 && (
+        <div className="mt-8 border-t border-gray-200 dark:border-gray-700 pt-6">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+            Active Workspace Meets
+          </h3>
+          <div className="space-y-3">
+            {activeMeets.map(meet => (
+              <div key={meet._id} className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 flex items-center justify-between border border-blue-100 dark:border-blue-800/50">
+                <div className="flex items-center gap-3">
+                  <div className="bg-blue-100 dark:bg-blue-800 p-2 rounded-full">
+                    <svg className="w-5 h-5 text-blue-600 dark:text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-gray-900 dark:text-gray-100">{meet.name}</h4>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {meet.activeParticipants?.length || 0} participants active
+                    </p>
+                  </div>
+                </div>
+                <a
+                  href={meet.activeMeetLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                >
+                  Join Meeting
+                </a>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

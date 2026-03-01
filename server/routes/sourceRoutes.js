@@ -15,68 +15,60 @@
    ⟁  SYSTEM LAYER : BACKEND CORE
    ⟁  DOMAIN       : API ROUTES
 
-   ⟁  PURPOSE      : Define API endpoints and route handlers
+   ⟁  PURPOSE      : Define source endpoints
 
-   ⟁  WHY          : Organized API structure and request routing
+   ⟁  WHY          : Enable research copilot API
 
-   ⟁  WHAT         : Express route definitions and middleware application
+   ⟁  WHAT         : REST routes for source management
 
-   ⟁  TECH STACK   : Node.js • Express • MongoDB
+   ⟁  TECH STACK   : Node.js • Express
    ⟁  CRYPTO       : N/A
    ⟁  TRUST LEVEL  : HIGH
-   ⟁  DOCS : /docs/api/routes.md
 
-   ⟁  USAGE RULES  : Define endpoints • Apply middleware • Handle routing
+   ⟁  USAGE RULES  : Use authentication middleware • Validate inputs
 
-        "Routes defined. Endpoints organized. API structured."
+        "Routes defined. Endpoints accessible. Research enabled."
 
                           ⟡  A I V A  ⟡
 
                      © 2026 Mohitraj Jadeja
 
 ═══════════════════════════════════════════════════════════════════════════════*/
+
 import express from 'express';
-import {
-  getUserStats,
-  getAchievements,
-  getUserAchievements,
-  awardXP,
-  awardCoins,
-  startFocusSession,
-  endFocusSession,
-  submitReflection,
-  getFocusROI
-} from '../controllers/gamificationController.js';
 import { protect } from '../middlewares/authMiddleware.js';
+import {
+  createSource,
+  getSources,
+  getSource,
+  updateSource,
+  deleteSource,
+  linkSourceToNote,
+  unlinkSourceFromNote,
+  getCitation,
+  batchImportSources,
+} from '../controllers/sourceController.js';
 
 const router = express.Router();
 
 // All routes require authentication
 router.use(protect);
 
-// Get user gamification stats
-router.get('/stats', getUserStats);
+// Source CRUD operations
+router.post('/', createSource);
+router.get('/', getSources);
+router.get('/:id', getSource);
+router.patch('/:id', updateSource);
+router.delete('/:id', deleteSource);
 
-// Get all available achievements
-router.get('/achievements', getAchievements);
+// Citation operations
+router.get('/:id/citation', getCitation);
 
-// Get user's earned achievements
-router.get('/my-achievements', getUserAchievements);
+// Link/unlink sources to notes
+router.post('/:sourceId/link/note/:noteId', linkSourceToNote);
+router.delete('/:sourceId/link/note/:noteId', unlinkSourceFromNote);
 
-// Award XP (admin/testing)
-router.post('/award-xp', awardXP);
-
-// Award coins (admin/testing)
-router.post('/award-coins', awardCoins);
-
-// Focus session management
-router.post('/focus/start', startFocusSession);
-router.post('/focus/end', endFocusSession);
-
-// Reflection
-router.post('/reflection', submitReflection);
-
-// Focus ROI
-router.get('/focus-roi', getFocusROI);
+// Batch operations
+router.post('/batch/import', batchImportSources);
 
 export default router;

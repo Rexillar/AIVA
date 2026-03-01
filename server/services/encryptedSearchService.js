@@ -71,8 +71,8 @@ class EncryptedSearchService {
       matchStage.priority = { $in: searchCriteria.priorities };
     }
 
-    // Add archived/deleted filters
-    matchStage.isArchived = { $ne: true };
+    // Add trash/deleted filters
+    matchStage.isTrash = { $ne: true };
     matchStage.isDeleted = { $ne: true };
 
     pipeline.push({ $match: matchStage });
@@ -124,8 +124,8 @@ class EncryptedSearchService {
       matchStage.creator = searchCriteria.creator;
     }
 
-    // Add archived/deleted filters
-    matchStage.isArchived = { $ne: true };
+    // Add trash/deleted filters
+    matchStage.isTrash = { $ne: true };
     matchStage.isDeleted = { $ne: true };
 
     pipeline.push({ $match: matchStage });

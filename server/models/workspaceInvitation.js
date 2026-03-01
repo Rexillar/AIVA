@@ -70,35 +70,6 @@ const workspaceInvitationSchema = new mongoose.Schema(
       type: String,
       required: true
     },
-    // Gamification elements
-    invitationLevel: {
-      type: Number,
-      default: 1,
-      min: 1,
-      max: 5
-    },
-    perks: [{
-      type: String,
-      enum: [
-        "early_access",
-        "custom_theme",
-        "priority_support",
-        "beta_features",
-        "custom_emoji"
-      ]
-    }],
-    achievements: [{
-      name: String,
-      unlockedAt: Date,
-      icon: String
-    }],
-    streakCount: {
-      type: Number,
-      default: 0
-    },
-    lastActive: {
-      type: Date
-    },
     // Time-sensitive elements
     expiresAt: {
       type: Date,
@@ -115,20 +86,6 @@ const workspaceInvitationSchema = new mongoose.Schema(
     },
     lastClicked: {
       type: Date
-    },
-    // Social elements
-    referralCode: {
-      type: String,
-      // sparse: true // Removed to prevent duplicate index warning
-    },
-    referredBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "WorkspaceInvitation",
-      sparse: true
-    },
-    referralCount: {
-      type: Number,
-      default: 0
     }
   },
   {
@@ -142,7 +99,6 @@ const workspaceInvitationSchema = new mongoose.Schema(
 workspaceInvitationSchema.index({ workspace: 1, email: 1 }, { unique: true });
 workspaceInvitationSchema.index({ token: 1 }, { unique: true });
 workspaceInvitationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-workspaceInvitationSchema.index({ referralCode: 1 }, { sparse: true });
 
 // Virtual for checking if invitation is expired
 workspaceInvitationSchema.virtual('isExpired').get(function () {
@@ -154,33 +110,11 @@ workspaceInvitationSchema.virtual('timeRemaining').get(function () {
   return Math.max(0, this.expiresAt - Date.now());
 });
 
-// Virtual for invitation tier based on perks count
-workspaceInvitationSchema.virtual('tier').get(function () {
-  const perksCount = this.perks?.length || 0;
-  if (perksCount >= 4) return 'diamond';
-  if (perksCount >= 3) return 'gold';
-  if (perksCount >= 2) return 'silver';
-  return 'bronze';
-});
-
 // Pre-save middleware
 workspaceInvitationSchema.pre('save', function (next) {
   // Handle expired invitations
   if (this.isExpired) {
     this.status = 'expired';
-  }
-
-  // Generate referral code if not exists
-  if (!this.referralCode && this.status === 'accepted') {
-    this.referralCode = crypto.randomBytes(4).toString('hex').toUpperCase();
-  }
-
-  // Update streak count
-  if (this.lastActive) {
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    if (this.lastActive < oneDayAgo) {
-      this.streakCount = 0;
-    }
   }
 
   next();
@@ -190,23 +124,6 @@ workspaceInvitationSchema.pre('save', function (next) {
 workspaceInvitationSchema.methods.incrementClicks = async function () {
   this.clicks += 1;
   this.lastClicked = new Date();
-  return this.save();
-};
-
-workspaceInvitationSchema.methods.addAchievement = async function (achievement) {
-  if (!this.achievements.some(a => a.name === achievement.name)) {
-    this.achievements.push({
-      ...achievement,
-      unlockedAt: new Date()
-    });
-    return this.save();
-  }
-  return this;
-};
-
-workspaceInvitationSchema.methods.updateLevel = async function () {
-  const baseScore = this.referralCount * 10 + this.streakCount * 5;
-  this.invitationLevel = Math.min(5, Math.floor(baseScore / 50) + 1);
   return this.save();
 };
 
@@ -230,21 +147,6 @@ workspaceInvitationSchema.statics.getPendingInvitations = async function (email)
     .populate('workspace')
     .populate('invitedBy')
     .sort('-createdAt');
-};
-
-workspaceInvitationSchema.statics.getReferralLeaderboard = async function () {
-  return this.aggregate([
-    { $match: { status: 'accepted' } },
-    {
-      $group: {
-        _id: '$invitedBy',
-        totalReferrals: { $sum: '$referralCount' },
-        successfulInvites: { $sum: 1 }
-      }
-    },
-    { $sort: { totalReferrals: -1, successfulInvites: -1 } },
-    { $limit: 10 }
-  ]);
 };
 
 const WorkspaceInvitation = mongoose.models.WorkspaceInvitation ||

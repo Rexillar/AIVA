@@ -36,54 +36,31 @@
 
 ═══════════════════════════════════════════════════════════════════════════════*/
 
-import { useState, useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import { useState } from "react";
+import { useSelector } from "react-redux";
 import { useWorkspace } from "../components/workspace/provider/WorkspaceProvider";
 import { Container } from "../components/shared/layout/Container";
 import { Card } from "../components/shared/layout/Card";
 import { SearchInput } from "../components/shared/inputs/SearchInput";
-import { LoadingSpinner } from "../components/shared/feedback/LoadingSpinner";
-import { ErrorBoundary } from "../components/shared/feedback/ErrorBoundary";
 import { AddTask } from "../components/tasks/dialogs/AddTask";
 import TaskList from "../components/tasks/list/TaskList";
-import { useGetWorkspaceTasksQuery } from "../redux/slices/api/taskApiSlice";
 import { useGetWorkspaceQuery } from "../redux/slices/api/workspaceApiSlice";
 import { FiDollarSign, FiPlus } from "react-icons/fi";
-import { fetchExternalTasks } from "../slices/externalTasksSlice";
 
 const Tasks = () => {
   const { workspace } = useWorkspace();
-  const dispatch = useDispatch();
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [isAddBudgetOpen, setIsAddBudgetOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTaskType, setSelectedTaskType] = useState("all");
 
-  // Redux state for external tasks
-  const { tasks: externalTasks, loading: externalTasksLoading } = useSelector(
-    (state) => state.externalTasks
-  );
+  // externalTasks used only for stats display in this component
+  const { tasks: externalTasks } = useSelector((state) => state.externalTasks);
 
-  // Get tasks data
-  const {
-    data: tasksData,
-    isLoading: isTasksLoading,
-    error,
-  } = useGetWorkspaceTasksQuery(workspace?._id, { skip: !workspace?._id });
-
-  // Get workspace data
+  // Get workspace data only
   const { data: workspaceData } = useGetWorkspaceQuery(workspace?._id, {
     skip: !workspace?._id,
   });
-
-  // Fetch external Google Tasks when component mounts
-  useEffect(() => {
-    if (workspace?._id) {
-      dispatch(fetchExternalTasks({
-        workspaceId: workspace._id
-      }));
-    }
-  }, [workspace?._id, dispatch]);
 
   // Extract workspace info from the response
   const name =
@@ -91,60 +68,19 @@ const Tasks = () => {
   const description =
     workspaceData?.data?.description || workspace?.description;
 
-  // Combine AIVA tasks with Google Tasks
-  const allTasks = [
-    ...(tasksData?.tasks || []).filter(t => !t.isGoogleSynced),
-    ...(externalTasks || []).map(task => ({
-      ...task,
-      _id: `google-${task._id}`,
-      isGoogleTask: true,
-      title: task.title,
-      description: task.notes || task.description,
-      stage: task.status === 'completed' ? 'completed' : 'todo',
-      dueDate: task.dueDate,
-      priority: 'medium',
-      taskType: 'regular'
-    }))
-  ];
-
-  // Filter tasks based on search and type
-  const filteredTasks = allTasks?.filter((task) => {
-    if (!task || !task.title) {
-      return false;
-    }
-
+  // Filter tasks based on search and type — applied inside TaskList via props
+  // TaskList manages its own query so we don't override it with a prop
+  const filterTask = (task) => {
+    if (!task || !task.title) return false;
     const matchesSearch =
       task.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (task.description && task.description?.toLowerCase().includes(searchQuery.toLowerCase()));
-
+      task.description?.toLowerCase().includes(searchQuery.toLowerCase());
     if (selectedTaskType === "all") return matchesSearch;
     if (selectedTaskType === "google") return matchesSearch && task.isGoogleTask;
     if (selectedTaskType === "aiva") return matchesSearch && !task.isGoogleTask;
-    if (selectedTaskType === "budget")
-      return matchesSearch && task.taskType === "budget";
-    return matchesSearch && task.taskType !== "budget" && !task.isGoogleTask;
-  });
-
-  if (isTasksLoading) {
-    return (
-      <Container>
-        <div className="flex flex-col items-center justify-center min-h-screen">
-          <LoadingSpinner size="lg" />
-          <p className="mt-4 text-gray-600 dark:text-gray-400">
-            Loading tasks...
-          </p>
-        </div>
-      </Container>
-    );
-  }
-
-  if (error) {
-    return (
-      <Container>
-        <ErrorBoundary error={error} />
-      </Container>
-    );
-  }
+    if (selectedTaskType === "budget") return matchesSearch && task.taskType === "budget";
+    return matchesSearch;
+  };
 
   return (
     <Container>
@@ -254,13 +190,10 @@ const Tasks = () => {
           </select>
         </div>
 
-        {/* Task List */}
+        {/* Task List — TaskList manages its own data fetching internally */}
         <Card>
           <TaskList
-            tasks={filteredTasks || []}
-            showBudgetDetails={
-              selectedTaskType === "budget" || selectedTaskType === "all"
-            }
+            showBudgetDetails={selectedTaskType === "budget" || selectedTaskType === "all"}
             workspace={{
               name,
               description,

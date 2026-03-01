@@ -69,6 +69,7 @@ const TaskCard = ({ task, onUpdate }) => {
   const [duplicateTask] = useDuplicateTaskMutation();
   const [moveToTrash] = useMoveToTrashMutation();
   const { user } = useSelector((state) => state.auth);
+  const { currentWorkspace } = useSelector((state) => state.workspace);
   const [updateTask] = useUpdateTaskMutation();
   const [isLoading, setIsLoading] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
@@ -171,8 +172,8 @@ const TaskCard = ({ task, onUpdate }) => {
       // Show user-friendly error message
       toast.error(
         error?.data?.message ||
-          error?.message ||
-          "Failed to move task to trash",
+        error?.message ||
+        "Failed to move task to trash",
       );
     } finally {
       setIsLoading(false);
@@ -210,7 +211,16 @@ const TaskCard = ({ task, onUpdate }) => {
     e.preventDefault();
     e.stopPropagation();
     if (task?._id) {
-      navigate(`/task/${task._id}`);
+      // Resolve workspaceId from task object or Redux currentWorkspace
+      const wsId =
+        (typeof task.workspace === 'string' ? task.workspace : task.workspace?._id) ||
+        task.workspaceId ||
+        currentWorkspace?._id;
+      if (wsId) {
+        navigate(`/workspace/${wsId}/task/${task._id}`);
+      } else {
+        navigate(`/task/${task._id}`);
+      }
     }
   };
 
@@ -256,13 +266,16 @@ const TaskCard = ({ task, onUpdate }) => {
                 <Menu.Item>
                   {({ active }) => (
                     <button
-                      className={`${
-                        active ? "bg-gray-100 dark:bg-gray-700" : ""
-                      } block px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 w-full text-left`}
+                      className={`${active ? "bg-gray-100 dark:bg-gray-700" : ""
+                        } block px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 w-full text-left`}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        navigate(`/task/${task._id}`);
+                        const wsId =
+                          (typeof task.workspace === 'string' ? task.workspace : task.workspace?._id) ||
+                          task.workspaceId ||
+                          currentWorkspace?._id;
+                        navigate(wsId ? `/workspace/${wsId}/task/${task._id}` : `/task/${task._id}`);
                       }}
                     >
                       View Task
@@ -272,9 +285,8 @@ const TaskCard = ({ task, onUpdate }) => {
                 <Menu.Item>
                   {({ active }) => (
                     <button
-                      className={`${
-                        active ? "bg-gray-100 dark:bg-gray-700" : ""
-                      } block px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 w-full text-left`}
+                      className={`${active ? "bg-gray-100 dark:bg-gray-700" : ""
+                        } block px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 w-full text-left`}
                       onClick={(e) => {
                         e.stopPropagation();
                         setIsInfoModalOpen(true);
@@ -287,9 +299,8 @@ const TaskCard = ({ task, onUpdate }) => {
                 <Menu.Item>
                   {({ active }) => (
                     <button
-                      className={`${
-                        active ? "bg-gray-100 dark:bg-gray-700" : ""
-                      } block px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 w-full text-left`}
+                      className={`${active ? "bg-gray-100 dark:bg-gray-700" : ""
+                        } block px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 w-full text-left`}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -303,9 +314,8 @@ const TaskCard = ({ task, onUpdate }) => {
                 <Menu.Item>
                   {({ active }) => (
                     <button
-                      className={`${
-                        active ? "bg-gray-100 dark:bg-gray-700" : ""
-                      } block px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 w-full text-left`}
+                      className={`${active ? "bg-gray-100 dark:bg-gray-700" : ""
+                        } block px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 w-full text-left`}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -319,11 +329,9 @@ const TaskCard = ({ task, onUpdate }) => {
                 <Menu.Item>
                   {({ active }) => (
                     <button
-                      className={`${
-                        active ? "bg-gray-100 dark:bg-gray-700" : ""
-                      } ${
-                        isLoading ? "opacity-50 cursor-not-allowed" : ""
-                      } w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400`}
+                      className={`${active ? "bg-gray-100 dark:bg-gray-700" : ""
+                        } ${isLoading ? "opacity-50 cursor-not-allowed" : ""
+                        } w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400`}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();

@@ -105,9 +105,7 @@ const WorkspaceInvitations = () => {
   if (!Array.isArray(invitations) || invitations.length === 0) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-          Workspace Invitations
-        </h2>
+
         <div className="text-center py-8">
           <div className="mx-auto w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
             <UserGroupIcon className="w-8 h-8 text-gray-400 dark:text-gray-500" />
@@ -123,9 +121,6 @@ const WorkspaceInvitations = () => {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
       <div className="p-6">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-          Workspace Invitations
-        </h2>
         <div className="space-y-4">
           {invitations.map((invitation) => (
             <div
@@ -151,19 +146,7 @@ const WorkspaceInvitations = () => {
                       <span className="text-sm text-gray-500 dark:text-gray-400">
                         Role: {invitation.role}
                       </span>
-                      {invitation.tier && (
-                        <span className="text-sm text-blue-500 dark:text-blue-400">
-                          Tier: {invitation.tier}
-                        </span>
-                      )}
                     </div>
-                    {invitation.perks && invitation.perks.length > 0 && (
-                      <div className="mt-2">
-                        <span className="text-sm text-gray-500 dark:text-gray-400">
-                          Perks: {invitation.perks.join(", ")}
-                        </span>
-                      </div>
-                    )}
                   </div>
                 </div>
                 <div className="flex space-x-2">
